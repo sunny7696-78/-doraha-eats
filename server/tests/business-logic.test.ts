@@ -5,6 +5,7 @@ import { distanceMeters } from '../src/lib/geo.js';
 import { isVendorOpen, nextOpeningLabel } from '../src/services/vendorHours.service.js';
 import { DEFAULT_SETTINGS } from '../src/services/settings.service.js';
 import { rupeesToPaise, pctOf } from '../src/lib/money.js';
+import { generateResetToken, verifyResetToken } from '../src/lib/resetToken.js';
 
 const zone = { deliveryFeePaise: 2000, minOrderPaise: 9900, etaMinutes: 30 };
 const settings = { ...DEFAULT_SETTINGS, platformFeePaise: 500, taxPct: 5, commissionPct: 12.5 };
@@ -190,5 +191,25 @@ describe('vendor opening hours', () => {
 
   it('reports the next opening time when closed', () => {
     expect(nextOpeningLabel([hour(1, '18:00', '23:00')], monday10am)).toBe('Opens at 18:00');
+  });
+});
+
+
+describe('password reset tokens', () => {
+  it('a freshly generated token verifies against its own hash', () => {
+    const { token, tokenHash } = generateResetToken();
+    expect(verifyResetToken(token, tokenHash)).toBe(true);
+  });
+
+  it('rejects a wrong token', () => {
+    const { tokenHash } = generateResetToken();
+    const { token: wrongToken } = generateResetToken();
+    expect(verifyResetToken(wrongToken, tokenHash)).toBe(false);
+  });
+
+  it('never produces the same token twice', () => {
+    const a = generateResetToken();
+    const b = generateResetToken();
+    expect(a.token).not.toBe(b.token);
   });
 });

@@ -58,3 +58,21 @@ authRouter.post('/device-token', authenticate, validate({
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
+
+authRouter.post('/google', authLimiter, validate({
+  body: z.object({ idToken: z.string().min(10) }),
+}), async (req, res, next) => {
+  try { res.json(await auth.loginWithGoogle(req.body.idToken)); } catch (e) { next(e); }
+});
+
+authRouter.post('/password/forgot', otpLimiter, validate({
+  body: z.object({ email: z.string().email() }),
+}), async (req, res, next) => {
+  try { res.json(await auth.requestPasswordReset(req.body.email)); } catch (e) { next(e); }
+});
+
+authRouter.post('/password/reset', authLimiter, validate({
+  body: z.object({ userId: z.string().uuid(), token: z.string().min(10), newPassword: z.string().min(6) }),
+}), async (req, res, next) => {
+  try { res.json(await auth.resetPassword(req.body.userId, req.body.token, req.body.newPassword)); } catch (e) { next(e); }
+});

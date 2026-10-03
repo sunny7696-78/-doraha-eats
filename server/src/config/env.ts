@@ -22,6 +22,10 @@ const schema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   UPI_VPA: z.string().default('dorahaeats@demoupi'),
+  EMAIL_PROVIDER: z.enum(['console', 'smtp']).default('console'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  APP_URL: z.string().default('http://localhost:4000'),
+  PASSWORD_RESET_TOKEN_TTL_MIN: z.coerce.number().default(30),
 });
 
 const parsed = schema.safeParse(process.env);
