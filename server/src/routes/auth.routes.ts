@@ -13,7 +13,7 @@ authRouter.post('/register', authLimiter, validate({
   body: z.object({
     fullName: z.string().min(2),
     password: z.string().min(6, 'Password must be at least 6 characters'),
-    email: z.string().email().optional(),
+    email: z.string().trim().toLowerCase().email().optional(),
     phone: z.string().min(10).optional(),
     role: z.enum(['CUSTOMER', 'DELIVERY']).optional(),
     locale: z.enum(['en', 'hi', 'pa']).optional(),
@@ -24,7 +24,7 @@ authRouter.post('/register', authLimiter, validate({
 
 authRouter.post('/login', authLimiter, validate({
   body: z.object({
-    email: z.string().email().optional(),
+    email: z.string().trim().toLowerCase().email().optional(),
     phone: z.string().optional(),
     password: z.string().min(1),
   }),
@@ -57,22 +57,4 @@ authRouter.post('/device-token', authenticate, validate({
       .onConflictDoNothing();
     res.json({ ok: true });
   } catch (e) { next(e); }
-});
-
-authRouter.post('/google', authLimiter, validate({
-  body: z.object({ idToken: z.string().min(10) }),
-}), async (req, res, next) => {
-  try { res.json(await auth.loginWithGoogle(req.body.idToken)); } catch (e) { next(e); }
-});
-
-authRouter.post('/password/forgot', otpLimiter, validate({
-  body: z.object({ email: z.string().email() }),
-}), async (req, res, next) => {
-  try { res.json(await auth.requestPasswordReset(req.body.email)); } catch (e) { next(e); }
-});
-
-authRouter.post('/password/reset', authLimiter, validate({
-  body: z.object({ userId: z.string().uuid(), token: z.string().min(10), newPassword: z.string().min(6) }),
-}), async (req, res, next) => {
-  try { res.json(await auth.resetPassword(req.body.userId, req.body.token, req.body.newPassword)); } catch (e) { next(e); }
 });

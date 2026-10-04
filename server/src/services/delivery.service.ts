@@ -1,7 +1,8 @@
+import { startOfTodayIST } from '../lib/time.js';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { deliveryAssignments, deliveryPartners, orders, users, vendors } from '../db/schema.js';
-import { Errors } from '../lib/errors.js';
+import { AppError, Errors } from '../lib/errors.js';
 import { distanceMeters } from '../lib/geo.js';
 import { changeStatus } from './order.service.js';
 import { getSettings } from './settings.service.js';
@@ -100,29 +101,43 @@ export async function acceptDelivery(userId: string, orderId: string) {
     throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
   }
 
-  const [taken] = await db.select().from(deliveryAssignments)
-    .where(and(eq(deliveryAssignments.orderId, orderId), eq(deliveryAssignments.state, 'ACCEPTED'))).limit(1);
-  if (taken) throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
-
-  await db.insert(deliveryAssignments).values({
-    orderId, partnerId: partner.id, state: 'ACCEPTED',
-    payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
-  }).onConflictDoUpdate({
-    target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
-    set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
-  });
+  // The READY -> ASSIGNED compare-and-set and the assignment insert commit together,
+  // so with two riders racing, exactly one wins and the other gets ALREADY_TAKEN.
+  let result;
+  try {
+    result = await changeStatus({
+      orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId,
+      inTx: async (tx) => {
+        await tx.insert(deliveryAssignments).values({
+          orderId, partnerId: partner.id, state: 'ACCEPTED',
+          payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
+          set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
+        });
+      },
+    });
+  } catch (e) {
+    if (e instanceof AppError && (e.code === 'STALE_STATUS' || e.code === 'INVALID_TRANSITION')) {
+      throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
+    }
+    throw e;
+  }
 
   const [vendor] = await db.select().from(vendors).where(eq(vendors.id, order.vendorId)).limit(1);
   if (vendor) {
-    await notify({
-      userId: vendor.ownerUserId, type: 'RIDER_ASSIGNED',
-      title: 'Delivery partner assigned',
-      body: `A delivery partner is coming for order ${order.code}.`,
-      data: { orderId: order.id },
-    });
+    try {
+      await notify({
+        userId: vendor.ownerUserId, type: 'RIDER_ASSIGNED',
+        title: 'Delivery partner assigned',
+        body: `A delivery partner is coming for order ${order.code}.`,
+        data: { orderId: order.id },
+      });
+    } catch (err) {
+      console.error('[notify] failed for rider assigned', orderId, err);
+    }
   }
-
-  return changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId });
+  return result;
 }
 
 async function requireOwnAssignment(userId: string, orderId: string) {
@@ -191,7 +206,7 @@ export async function listPartnerHistory(userId: string) {
 export async function getPartnerEarnings(userId: string) {
   const history = await listPartnerHistory(userId);
   const completed = history.filter((h) => h.state === 'COMPLETED');
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = startOfTodayIST();
   const todays = completed.filter((h) => h.deliveredAt && new Date(h.deliveredAt) >= today);
   return {
     totalDeliveries: completed.length,

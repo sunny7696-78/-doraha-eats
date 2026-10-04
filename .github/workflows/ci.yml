@@ -1,0 +1,33 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: server } }
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: devpass, POSTGRES_DB: doraha_eats }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:devpass@localhost:5432/doraha_eats
+      JWT_SECRET: ci-only-secret-0123456789abcdef0123
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: server/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run db:migrate
+      - run: npm run seed
+      - run: |
+          npm run dev > /tmp/api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 1; done
+          node tests/acceptance.mjs
+          node tests/regression.mjs

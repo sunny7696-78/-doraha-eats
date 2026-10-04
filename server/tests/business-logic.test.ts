@@ -5,7 +5,6 @@ import { distanceMeters } from '../src/lib/geo.js';
 import { isVendorOpen, nextOpeningLabel } from '../src/services/vendorHours.service.js';
 import { DEFAULT_SETTINGS } from '../src/services/settings.service.js';
 import { rupeesToPaise, pctOf } from '../src/lib/money.js';
-import { generateResetToken, verifyResetToken } from '../src/lib/resetToken.js';
 
 const zone = { deliveryFeePaise: 2000, minOrderPaise: 9900, etaMinutes: 30 };
 const settings = { ...DEFAULT_SETTINGS, platformFeePaise: 500, taxPct: 5, commissionPct: 12.5 };
@@ -161,8 +160,8 @@ describe('delivery zone validation', () => {
 });
 
 describe('vendor opening hours', () => {
-  const monday10am = new Date('2026-09-14T10:30:00');   // a Monday
-  const monday2am = new Date('2026-09-14T02:00:00');
+  const monday10am = new Date('2026-09-14T10:30:00+05:30');   // a Monday
+  const monday2am = new Date('2026-09-14T02:00:00+05:30');
 
   it('is closed when the manual switch is off, whatever the hours say', () => {
     expect(isVendorOpen(false, [hour(1, '09:00', '23:00')], monday10am)).toBe(false);
@@ -177,7 +176,7 @@ describe('vendor opening hours', () => {
   });
 
   it('closes exactly at the closing minute of an overnight window', () => {
-    expect(isVendorOpen(true, [hour(0, '20:00', '03:00')], new Date('2026-09-14T03:00:00'))).toBe(false);
+    expect(isVendorOpen(true, [hour(0, '20:00', '03:00')], new Date('2026-09-14T03:00:00+05:30'))).toBe(false);
   });
 
   it('handles a window that crosses midnight', () => {
@@ -194,22 +193,17 @@ describe('vendor opening hours', () => {
   });
 });
 
-
-describe('password reset tokens', () => {
-  it('a freshly generated token verifies against its own hash', () => {
-    const { token, tokenHash } = generateResetToken();
-    expect(verifyResetToken(token, tokenHash)).toBe(true);
+describe('Doraha business clock (IST) — server may run in UTC', () => {
+  it('uses India time for opening hours regardless of server timezone', () => {
+    // 04:30 UTC == 10:00 IST on Monday. A UTC server must still say "open" for 09:00-23:00.
+    const monday10amIST = new Date('2026-09-14T04:30:00Z');
+    expect(isVendorOpen(true, [hour(1, '09:00', '23:00')], monday10amIST)).toBe(true);
+    // 19:00 UTC Sunday == 00:30 IST Monday: Monday's 09:00 window is not open yet.
+    expect(isVendorOpen(true, [hour(1, '09:00', '23:00')], new Date('2026-09-13T19:00:00Z'))).toBe(false);
   });
-
-  it('rejects a wrong token', () => {
-    const { tokenHash } = generateResetToken();
-    const { token: wrongToken } = generateResetToken();
-    expect(verifyResetToken(wrongToken, tokenHash)).toBe(false);
-  });
-
-  it('never produces the same token twice', () => {
-    const a = generateResetToken();
-    const b = generateResetToken();
-    expect(a.token).not.toBe(b.token);
+  it('starts "today" at midnight IST', async () => {
+    const { startOfTodayIST } = await import('../src/lib/time.js');
+    // 2026-09-14 10:00 IST -> today began 2026-09-13T18:30:00Z
+    expect(startOfTodayIST(new Date('2026-09-14T04:30:00Z')).toISOString()).toBe('2026-09-13T18:30:00.000Z');
   });
 });

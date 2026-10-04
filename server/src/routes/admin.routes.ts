@@ -1,3 +1,4 @@
+import { startOfTodayIST } from '../lib/time.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
@@ -247,11 +248,19 @@ adminRouter.get('/payments/pending', async (_req, res, next) => {
 
 adminRouter.post('/payments/:id/verify', async (req, res, next) => {
   try {
+    const [cur] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
+    if (!cur) throw Errors.notFound('Payment');
+    if (cur.status !== 'AWAITING_VERIFICATION' || !cur.upiRef) {
+      throw Errors.conflict('Only a submitted UPI payment can be verified.', 'NOT_VERIFIABLE');
+    }
+    const [ord] = await db.select().from(orders).where(eq(orders.id, cur.orderId)).limit(1);
+    if (!ord || ord.status === 'CANCELLED') {
+      throw Errors.conflict('This order is cancelled; do not verify. Refund instead.', 'ORDER_CANCELLED');
+    }
     const [p] = await db.update(payments).set({
       status: 'PAID', verifiedById: req.user!.id, verifiedAt: new Date(), updatedAt: new Date(),
-    }).where(eq(payments.id, req.params.id)).returning();
-    if (!p) throw Errors.notFound('Payment');
-    await db.update(orders).set({ paymentStatus: 'PAID' }).where(eq(orders.id, p.orderId));
+    }).where(eq(payments.id, cur.id)).returning();
+    await db.update(orders).set({ paymentStatus: 'PAID', updatedAt: new Date() }).where(eq(orders.id, cur.orderId));
     res.json({ payment: p });
   } catch (e) { next(e); }
 });
@@ -361,7 +370,7 @@ adminRouter.put('/settings', validate({
 
 adminRouter.get('/analytics', async (_req, res, next) => {
   try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = startOfTodayIST();
     const since = new Date(Date.now() - 14 * 86_400_000);
 
     const [counts] = await db.select({

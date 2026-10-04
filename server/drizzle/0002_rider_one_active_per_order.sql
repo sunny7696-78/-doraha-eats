@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "assignment_one_active_per_order" ON "delivery_assignments" USING btree ("order_id") WHERE "delivery_assignments"."state" in ('ACCEPTED','COMPLETED');

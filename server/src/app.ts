@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { corsOrigins, env } from './config/env.js';
+import { pool } from './db/index.js';
 import { generalLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { authRouter } from './routes/auth.routes.js';
@@ -20,8 +21,13 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(generalLimiter);
 
-  app.get('/health', (_req, res) => {
-    res.json({ ok: true, service: 'doraha-eats-api', env: env.NODE_ENV, time: new Date().toISOString() });
+  app.get('/health', async (_req, res) => {
+    try {
+      await pool.query('select 1');
+      res.json({ ok: true, service: 'doraha-eats-api', env: env.NODE_ENV, time: new Date().toISOString() });
+    } catch {
+      res.status(503).json({ ok: false, error: 'database unreachable' });
+    }
   });
 
   const api = express.Router();

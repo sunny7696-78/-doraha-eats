@@ -54,6 +54,10 @@ async function reset() {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.I_UNDERSTAND_THIS_WIPES_ALL_DATA !== 'yes') {
+    console.error('REFUSING: seed TRUNCATES every table (users, orders, everything). Not allowed in production.');
+    process.exit(1);
+  }
   console.log('Seeding Doraha Eats demo data...\n');
   await reset();
 

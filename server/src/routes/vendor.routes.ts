@@ -1,3 +1,4 @@
+import { startOfTodayIST } from '../lib/time.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
@@ -250,7 +251,7 @@ vendorRouter.post('/orders/:id/ready', vendorAction('READY'));
 vendorRouter.get('/earnings', async (req, res, next) => {
   try {
     const v = await myVendor(req.user!.id);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = startOfTodayIST();
 
     const [all] = await db.select({
       count: sql<number>`count(*)`,

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { validate } from '../middleware/validate.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
@@ -9,7 +9,6 @@ import { resolveZone } from '../services/zone.service.js';
 import * as cart from '../services/cart.service.js';
 import * as orderService from '../services/order.service.js';
 import { Errors } from '../lib/errors.js';
-import { getPaymentProvider } from '../adapters/payments/index.js';
 
 export const customerRouter = Router();
 customerRouter.use(authenticate, requireRole('CUSTOMER', 'ADMIN'));
@@ -138,30 +137,31 @@ customerRouter.post('/orders/:id/cancel', validate({
   } catch (e) { next(e); }
 });
 
-/** UPI: customer submits the UTR; the mock provider validates, admin confirms. */
+/**
+ * UPI: the customer submits the UTR. This NEVER marks the order paid — only an
+ * admin (or, later, a gateway webhook) can do that. Prevents free "paid" orders.
+ */
 customerRouter.post('/orders/:id/payment/upi-ref', validate({
-  body: z.object({ utr: z.string().min(6).max(30) }),
+  body: z.object({ utr: z.string().trim().regex(/^[A-Za-z0-9]{12,22}$/, 'Enter the 12-digit UTR from your UPI app') }),
 }), async (req, res, next) => {
   try {
     const order = await orderService.getOrderDetail(req.params.id);
     if (order.customerId !== req.user!.id) throw Errors.forbidden();
     if (order.paymentMethod !== 'UPI') throw Errors.badRequest('This order is not a UPI order.');
+    if (order.status === 'CANCELLED') throw Errors.badRequest('This order was cancelled.', 'ORDER_CANCELLED');
+    if (order.payment?.status === 'PAID') throw Errors.conflict('This order is already paid.', 'ALREADY_PAID');
 
-    const provider = getPaymentProvider('UPI');
-    const result = await provider.verify({
-      reference: order.payment?.providerRef ?? order.code, upiRef: req.body.utr,
-    });
+    // Same UTR can't be reused on another order (stops one payment covering many orders).
+    const [dup] = await db.select({ id: payments.id }).from(payments)
+      .where(and(eq(payments.upiRef, req.body.utr), ne(payments.orderId, order.id))).limit(1);
+    if (dup) throw Errors.conflict('This UTR was already used for another order.', 'UTR_REUSED');
+
     await db.update(payments).set({
-      upiRef: req.body.utr,
-      status: result.paid ? 'PAID' : 'AWAITING_VERIFICATION',
-      providerRef: result.providerRef ?? order.payment?.providerRef ?? null,
-      updatedAt: new Date(),
+      upiRef: req.body.utr, status: 'AWAITING_VERIFICATION', updatedAt: new Date(),
     }).where(eq(payments.orderId, order.id));
 
-    if (result.paid) {
-      await db.update(orders).set({ paymentStatus: 'PAID', updatedAt: new Date() }).where(eq(orders.id, order.id));
-    }
-    res.json({ verified: result.paid, order: await orderService.getOrderDetail(order.id) });
+    res.json({ verified: false, message: 'Payment submitted. We will confirm it shortly.',
+      order: await orderService.getOrderDetail(order.id) });
   } catch (e) { next(e); }
 });
 

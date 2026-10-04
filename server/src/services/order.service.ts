@@ -103,12 +103,16 @@ export async function placeOrder(userId: string, input: {
 
   const [vendor] = await db.select().from(vendors).where(eq(vendors.id, order.vendorId)).limit(1);
   if (vendor) {
-    await notify({
-      userId: vendor.ownerUserId, type: 'NEW_ORDER',
-      title: 'New order received',
-      body: `Order ${order.code} — ${quote.cart.itemCount} item(s).`,
-      data: { orderId: order.id },
-    });
+    try {
+      await notify({
+        userId: vendor.ownerUserId, type: 'NEW_ORDER',
+        title: 'New order received',
+        body: `Order ${order.code} — ${quote.cart.itemCount} item(s).`,
+        data: { orderId: order.id },
+      });
+    } catch (err) {
+      console.error('[notify] failed for new order', order.id, err);
+    }
   }
 
   return getOrderDetail(order.id);
@@ -183,6 +187,8 @@ export async function changeStatus(input: {
   actor: Actor;
   actorUserId?: string;
   note?: string;
+  /** Runs inside the same DB transaction, after the status row is won. */
+  inTx?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<void>;
 }) {
   const [order] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
   if (!order) throw Errors.notFound('Order');
@@ -192,6 +198,10 @@ export async function changeStatus(input: {
   if (!canTransition(from, input.to)) throw Errors.invalidTransition(from, input.to);
   if (!actorCanSet(input.actor, input.to)) {
     throw Errors.forbidden(`A ${input.actor.toLowerCase()} cannot set an order to ${input.to}.`);
+  }
+  // Once the rider has the food, only an admin may cancel.
+  if (input.to === 'CANCELLED' && ['PICKED_UP', 'ON_THE_WAY'].includes(from) && input.actor !== 'ADMIN') {
+    throw Errors.forbidden('This order is already with the delivery partner. Please contact support.');
   }
 
   const patch: Partial<typeof orders.$inferInsert> = { status: input.to, updatedAt: new Date() };
@@ -207,22 +217,45 @@ export async function changeStatus(input: {
   }
 
   await db.transaction(async (tx) => {
-    await tx.update(orders).set(patch).where(eq(orders.id, order.id));
+    // Compare-and-set: only succeeds if the order is STILL in the status we validated.
+    const won = await tx.update(orders).set(patch)
+      .where(and(eq(orders.id, order.id), eq(orders.status, from)))
+      .returning({ id: orders.id });
+    if (won.length === 0) {
+      throw Errors.conflict('This order was just updated by someone else. Please refresh.', 'STALE_STATUS');
+    }
     await tx.insert(orderStatusEvents).values({
       orderId: order.id, status: input.to, actorId: input.actorUserId ?? null, note: input.note ?? null,
     });
     if (input.to === 'DELIVERED' && order.paymentMethod === 'COD') {
       await tx.update(payments).set({ status: 'PAID', updatedAt: new Date() }).where(eq(payments.orderId, order.id));
     }
+    if (input.to === 'CANCELLED') {
+      // Money already taken must be flagged for refund; unpaid intents are closed.
+      const [pay] = await tx.select().from(payments).where(eq(payments.orderId, order.id)).limit(1);
+      if (pay?.status === 'PAID') {
+        await tx.update(payments).set({ status: 'REFUNDED', updatedAt: new Date() }).where(eq(payments.id, pay.id));
+        await tx.update(orders).set({ paymentStatus: 'REFUNDED' }).where(eq(orders.id, order.id));
+      } else if (pay) {
+        await tx.update(payments).set({ status: 'FAILED', updatedAt: new Date() }).where(eq(payments.id, pay.id));
+        await tx.update(orders).set({ paymentStatus: 'FAILED' }).where(eq(orders.id, order.id));
+      }
+    }
+    if (input.inTx) await input.inTx(tx);
   });
 
+  // Notifications must never turn a committed status change into a 500.
   const template = ORDER_NOTIFICATIONS[input.to];
   if (template) {
-    await notify({
-      userId: order.customerId, type: `ORDER_${input.to}`,
-      title: template.title, body: `${template.body} (${order.code})`,
-      data: { orderId: order.id },
-    });
+    try {
+      await notify({
+        userId: order.customerId, type: `ORDER_${input.to}`,
+        title: template.title, body: `${template.body} (${order.code})`,
+        data: { orderId: order.id },
+      });
+    } catch (err) {
+      console.error('[notify] failed after status change', input.orderId, err);
+    }
   }
 
   return getOrderDetail(order.id);
