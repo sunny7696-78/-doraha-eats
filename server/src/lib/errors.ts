@@ -26,6 +26,11 @@ export const Errors = {
   emptyCart: () => new AppError(400, 'EMPTY_CART', 'Your cart is empty.'),
   belowMinimum: (minRupees: string) =>
     new AppError(400, 'BELOW_MINIMUM', `Minimum order for this area is Rs ${minRupees}.`),
+  paymentPending: () =>
+    new AppError(409, 'PAYMENT_PENDING', 'This order is waiting for payment to be confirmed.'),
+  invalidPayment: (m = 'We could not verify this payment.') => new AppError(400, 'INVALID_PAYMENT', m),
+  paymentAlreadyCompleted: () =>
+    new AppError(409, 'PAYMENT_ALREADY_COMPLETED', 'This order has already been paid.'),
   invalidTransition: (from: string, to: string) =>
     new AppError(409, 'INVALID_TRANSITION', `Cannot change order from ${from} to ${to}.`),
 };

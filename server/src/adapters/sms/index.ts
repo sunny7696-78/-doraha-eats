@@ -11,5 +11,10 @@ const consoleProvider: SmsProvider = {
   },
 };
 
+/** MSG91 is not wired up yet. Fail loudly instead of silently printing OTPs. */
+const unconfiguredProvider: SmsProvider = {
+  async sendOtp() { throw new Error(`SMS_PROVIDER=${env.SMS_PROVIDER} is not implemented yet.`); },
+};
+
 export const smsProvider: SmsProvider =
-  env.SMS_PROVIDER === 'console' ? consoleProvider : consoleProvider;
+  env.SMS_PROVIDER === 'console' ? consoleProvider : unconfiguredProvider;

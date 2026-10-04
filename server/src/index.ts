@@ -1,8 +1,10 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { getSettings } from './services/settings.service.js';
+import { startPaymentSweeper } from './services/paymentSweeper.js';
 
 const app = createApp();
+startPaymentSweeper();
 
 app.listen(env.PORT, async () => {
   const s = await getSettings().catch(() => null);

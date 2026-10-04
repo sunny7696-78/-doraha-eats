@@ -10,6 +10,7 @@ import { customerRouter } from './routes/customer.routes.js';
 import { vendorRouter } from './routes/vendor.routes.js';
 import { deliveryRouter } from './routes/delivery.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
+import { razorpayWebhook } from './routes/paymentWebhook.routes.js';
 
 export function createApp() {
   const app = express();
@@ -17,11 +18,13 @@ export function createApp() {
   app.set('trust proxy', 1);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors({ origin: corsOrigins, credentials: true }));
+  // Webhook FIRST, with the raw body: its signature is computed over the exact bytes sent.
+  app.post('/api/v1/payments/razorpay/webhook', express.raw({ type: 'application/json', limit: '512kb' }), razorpayWebhook);
   app.use(express.json({ limit: '1mb' }));
   app.use(generalLimiter);
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, service: 'doraha-eats-api', env: env.NODE_ENV, time: new Date().toISOString() });
+    res.json({ ok: true, service: 'doraha-eats-api', time: new Date().toISOString() });
   });
 
   const api = express.Router();

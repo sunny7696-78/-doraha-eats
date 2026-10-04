@@ -21,6 +21,9 @@ const schema = z.object({
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  /** Minutes a customer has to finish an online payment before the order is auto-cancelled. */
+  PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(5).max(180).default(30),
   UPI_VPA: z.string().default('dorahaeats@demoupi'),
 });
 
@@ -28,6 +31,31 @@ const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
   console.error('Invalid environment configuration:');
   console.error(parsed.error.flatten().fieldErrors);
+  process.exit(1);
+}
+
+/**
+ * Production fail-fast: refuse to boot rather than silently run on mocks,
+ * wildcard CORS, demo accounts or a weak signing secret.
+ */
+function productionProblems(e: z.infer<typeof schema>): string[] {
+  if (e.NODE_ENV !== 'production') return [];
+  const p: string[] = [];
+  if (e.PAYMENT_PROVIDER !== 'razorpay') p.push('PAYMENT_PROVIDER must be "razorpay" (mock payments are not allowed).');
+  if (!e.RAZORPAY_KEY_ID || !e.RAZORPAY_KEY_SECRET) p.push('RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required.');
+  if (!e.RAZORPAY_WEBHOOK_SECRET) p.push('RAZORPAY_WEBHOOK_SECRET is required (payments cannot be confirmed without it).');
+  if (e.CORS_ORIGINS.trim() === '*' || !e.CORS_ORIGINS.trim()) p.push('CORS_ORIGINS must list explicit origins, not "*".');
+  if (e.JWT_SECRET.length < 32) p.push('JWT_SECRET must be at least 32 characters in production.');
+  if (e.SEED_DEMO_DATA) p.push('SEED_DEMO_DATA must be "false" in production.');
+  if (e.DEMO_PASSWORD === 'Doraha@123') p.push('Do not run production with the default DEMO_PASSWORD.');
+  if (e.SMS_PROVIDER === 'console') p.push('SMS_PROVIDER=console is not allowed in production.');
+  if (e.STORAGE_PROVIDER === 'local') p.push('STORAGE_PROVIDER=local is not allowed in production.');
+  return p;
+}
+const problems = productionProblems(parsed.data);
+if (problems.length) {
+  console.error('Refusing to start in production:');
+  for (const m of problems) console.error(`  - ${m}`);
   process.exit(1);
 }
 

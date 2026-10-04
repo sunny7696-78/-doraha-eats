@@ -1,3 +1,4 @@
+import * as paymentService from '../services/payment.service.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
@@ -245,14 +246,32 @@ adminRouter.get('/payments/pending', async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/** Manual confirmation exists ONLY for the dev mock-UPI flow. Gateway payments are confirmed by Razorpay. */
 adminRouter.post('/payments/:id/verify', async (req, res, next) => {
   try {
-    const [p] = await db.update(payments).set({
-      status: 'PAID', verifiedById: req.user!.id, verifiedAt: new Date(), updatedAt: new Date(),
-    }).where(eq(payments.id, req.params.id)).returning();
+    const [p] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
     if (!p) throw Errors.notFound('Payment');
-    await db.update(orders).set({ paymentStatus: 'PAID' }).where(eq(orders.id, p.orderId));
-    res.json({ payment: p });
+    if (p.provider !== 'upi_mock') {
+      throw Errors.conflict('This payment is confirmed automatically by the payment gateway.', 'GATEWAY_PAYMENT');
+    }
+    await paymentService.markPaid({ paymentRowId: p.id, verifiedById: req.user!.id });
+    const [fresh] = await db.select().from(payments).where(eq(payments.id, p.id)).limit(1);
+    res.json({ payment: fresh });
+  } catch (e) { next(e); }
+});
+
+/** Retry a refund that did not complete. Only for CANCELLED orders — it never refunds a live order. */
+adminRouter.post('/payments/:id/refund', async (req, res, next) => {
+  try {
+    const [row] = await db.select({ p: payments, o: orders }).from(payments)
+      .innerJoin(orders, eq(payments.orderId, orders.id)).where(eq(payments.id, req.params.id)).limit(1);
+    if (!row) throw Errors.notFound('Payment');
+    if (row.o.status !== 'CANCELLED') {
+      throw Errors.conflict('Only cancelled orders can be refunded.', 'ORDER_NOT_CANCELLED');
+    }
+    const outcome = await paymentService.refundOrderPayment(row.o.id, 'Admin refund');
+    const [fresh] = await db.select().from(payments).where(eq(payments.id, row.p.id)).limit(1);
+    res.json({ outcome, payment: fresh });
   } catch (e) { next(e); }
 });
 

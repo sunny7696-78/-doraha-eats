@@ -10,6 +10,8 @@ import * as cart from '../services/cart.service.js';
 import * as orderService from '../services/order.service.js';
 import { Errors } from '../lib/errors.js';
 import { getPaymentProvider } from '../adapters/payments/index.js';
+import { env } from '../config/env.js';
+import * as paymentService from '../services/payment.service.js';
 
 export const customerRouter = Router();
 customerRouter.use(authenticate, requireRole('CUSTOMER', 'ADMIN'));
@@ -114,8 +116,12 @@ customerRouter.post('/orders', validate({
     cookingNote: z.string().max(200).optional(),
   }),
 }), async (req, res, next) => {
-  try { res.status(201).json({ order: await orderService.placeOrder(req.user!.id, req.body) }); }
-  catch (e) { next(e); }
+  try {
+    // Optional but recommended: the app sends one fresh key per checkout attempt.
+    const raw = req.header('Idempotency-Key');
+    const idempotencyKey = raw && /^[A-Za-z0-9_-]{8,100}$/.test(raw) ? raw : undefined;
+    res.status(201).json({ order: await orderService.placeOrder(req.user!.id, { ...req.body, idempotencyKey }) });
+  } catch (e) { next(e); }
 });
 
 customerRouter.get('/orders', async (req, res, next) => {
@@ -138,30 +144,59 @@ customerRouter.post('/orders/:id/cancel', validate({
   } catch (e) { next(e); }
 });
 
-/** UPI: customer submits the UTR; the mock provider validates, admin confirms. */
+/**
+ * Dev-only manual UPI flow (mock provider). Disabled whenever real payments are on,
+ * because it trusts a customer-typed UTR — real payments are confirmed by Razorpay only.
+ */
 customerRouter.post('/orders/:id/payment/upi-ref', validate({
   body: z.object({ utr: z.string().min(6).max(30) }),
 }), async (req, res, next) => {
   try {
+    if (env.PAYMENT_PROVIDER !== 'mock' || env.NODE_ENV === 'production') {
+      throw Errors.forbidden('Manual UPI confirmation is not available.');
+    }
     const order = await orderService.getOrderDetail(req.params.id);
     if (order.customerId !== req.user!.id) throw Errors.forbidden();
     if (order.paymentMethod !== 'UPI') throw Errors.badRequest('This order is not a UPI order.');
+    if (order.payment?.status === 'PAID') throw Errors.paymentAlreadyCompleted();
 
     const provider = getPaymentProvider('UPI');
     const result = await provider.verify({
       reference: order.payment?.providerRef ?? order.code, upiRef: req.body.utr,
     });
     await db.update(payments).set({
-      upiRef: req.body.utr,
-      status: result.paid ? 'PAID' : 'AWAITING_VERIFICATION',
-      providerRef: result.providerRef ?? order.payment?.providerRef ?? null,
+      upiRef: req.body.utr, providerRef: result.providerRef ?? order.payment?.providerRef ?? null,
       updatedAt: new Date(),
     }).where(eq(payments.orderId, order.id));
+    if (result.paid && order.payment) await paymentService.markPaid({ paymentRowId: order.payment.id });
 
-    if (result.paid) {
-      await db.update(orders).set({ paymentStatus: 'PAID', updatedAt: new Date() }).where(eq(orders.id, order.id));
-    }
     res.json({ verified: result.paid, order: await orderService.getOrderDetail(order.id) });
+  } catch (e) { next(e); }
+});
+
+/** Razorpay: the app reports the checkout result; the server verifies it before trusting it. */
+customerRouter.post('/orders/:id/payment/verify', validate({
+  body: z.object({
+    razorpay_order_id: z.string().regex(/^[A-Za-z0-9_]{6,64}$/),
+    razorpay_payment_id: z.string().regex(/^[A-Za-z0-9_]{6,64}$/),
+    razorpay_signature: z.string().regex(/^[a-f0-9]{64}$/i),
+  }),
+}), async (req, res, next) => {
+  try {
+    const out = await paymentService.verifyCheckout(req.user!.id, req.params.id, {
+      razorpayOrderId: req.body.razorpay_order_id,
+      razorpayPaymentId: req.body.razorpay_payment_id,
+      razorpaySignature: req.body.razorpay_signature,
+    });
+    res.json({ verified: out.verified, order: await orderService.getOrderDetail(req.params.id) });
+  } catch (e) { next(e); }
+});
+
+/** Re-open payment for an unpaid online order (re-uses the same Razorpay order — no double charge). */
+customerRouter.post('/orders/:id/payment/retry', async (req, res, next) => {
+  try {
+    const checkout = await paymentService.getCheckoutForRetry(req.user!.id, req.params.id);
+    res.json({ paymentCheckout: checkout });
   } catch (e) { next(e); }
 });
 
