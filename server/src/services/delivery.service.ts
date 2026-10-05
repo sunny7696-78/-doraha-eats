@@ -101,17 +101,41 @@ export async function acceptDelivery(userId: string, orderId: string) {
   }
 
   const [taken] = await db.select().from(deliveryAssignments)
-    .where(and(eq(deliveryAssignments.orderId, orderId), eq(deliveryAssignments.state, 'ACCEPTED'))).limit(1);
+    .where(and(eq(deliveryAssignments.orderId, orderId), inArray(deliveryAssignments.state, ['ACCEPTED', 'COMPLETED']))).limit(1);
   if (taken) throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
 
-  await db.insert(deliveryAssignments).values({
-    orderId, partnerId: partner.id, state: 'ACCEPTED',
-    payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
-  }).onConflictDoUpdate({
-    target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
-    set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
-  });
+  // The partial unique index assignment_order_active_uniq lets exactly ONE rider hold an
+  // order; a simultaneous second claim fails here instead of silently double-assigning.
+  let claimId: string;
+  try {
+    const [row] = await db.insert(deliveryAssignments).values({
+      orderId, partnerId: partner.id, state: 'ACCEPTED',
+      payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
+      set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
+    }).returning({ id: deliveryAssignments.id });
+    claimId = row.id;
+  } catch (e: any) {
+    if ((e?.code ?? e?.cause?.code) === '23505') {
+      throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
+    }
+    throw e;
+  }
 
+  let result;
+  try {
+    result = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId });
+  } catch (e) {
+    // Status move failed (order cancelled / changed meanwhile): release the claim so it
+    // cannot linger as a phantom ACCEPTED assignment.
+    await db.update(deliveryAssignments)
+      .set({ state: 'DECLINED', updatedAt: new Date() })
+      .where(eq(deliveryAssignments.id, claimId));
+    throw e;
+  }
+
+  // Notify the vendor only after the claim has really succeeded.
   const [vendor] = await db.select().from(vendors).where(eq(vendors.id, order.vendorId)).limit(1);
   if (vendor) {
     await notify({
@@ -121,8 +145,7 @@ export async function acceptDelivery(userId: string, orderId: string) {
       data: { orderId: order.id },
     });
   }
-
-  return changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId });
+  return result;
 }
 
 async function requireOwnAssignment(userId: string, orderId: string) {

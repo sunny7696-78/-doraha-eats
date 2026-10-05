@@ -61,6 +61,14 @@ export default function DashboardPage() {
         <StatCard label="Pending orders" value={c.pendingOrders} />
         <StatCard label="Delivered orders" value={c.deliveredOrders} />
         <StatCard label="Total revenue" value={paise(c.revenuePaise)} sub={`Commission ${paise(c.commissionPaise)}`} />
+        <StatCard label="Revenue today" value={paise(c.revenueTodayPaise)} />
+        <StatCard label="Cancelled orders" value={c.cancelledOrders} />
+        <StatCard label="Active deliveries" value={c.activeDeliveries} />
+        <StatCard label="Pending payments" value={c.pendingPayments} />
+        <StatCard label="Failed payments" value={c.failedPayments} />
+        <StatCard label="Refunds" value={c.refunds} sub={`${c.pendingRefunds} need attention`} />
+        <StatCard label="Vendor approvals pending" value={c.pendingVendorApprovals} />
+        <StatCard label="Rider approvals pending" value={c.pendingRiderApprovals} />
       </div>
 
       {/* Responsive Charts Grid */}

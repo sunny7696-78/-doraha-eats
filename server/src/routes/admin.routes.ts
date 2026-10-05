@@ -390,6 +390,11 @@ adminRouter.get('/analytics', async (_req, res, next) => {
       partners: sql<number>`(select count(*) from ${deliveryPartners} where ${deliveryPartners.status} = 'ACTIVE')`,
       onlinePartners: sql<number>`(select count(*) from ${deliveryPartners} where ${deliveryPartners.isOnline} = true)`,
       foodItems: sql<number>`(select count(*) from ${foodItems})`,
+      pendingVendorApprovals: sql<number>`(select count(*) from ${vendors} where ${vendors.status} = 'PENDING')`,
+      pendingRiderApprovals: sql<number>`(select count(*) from ${deliveryPartners} where ${deliveryPartners.status} = 'PENDING')`,
+      failedPayments: sql<number>`(select count(*) from ${payments} where ${payments.status} = 'FAILED')`,
+      refunds: sql<number>`(select count(*) from ${payments} where ${payments.refundStatus} is not null)`,
+      pendingRefunds: sql<number>`(select count(*) from ${payments} where ${payments.refundStatus} in ('INITIATED','PENDING','FAILED'))`,
     }).from(users).limit(1);
 
     const [orderAgg] = await db.select({
@@ -397,6 +402,10 @@ adminRouter.get('/analytics', async (_req, res, next) => {
       todayCount: sql<number>`count(*) filter (where ${orders.placedAt} >= ${today.toISOString()})`,
       pending: sql<number>`count(*) filter (where ${orders.status} not in ('DELIVERED','CANCELLED'))`,
       delivered: sql<number>`count(*) filter (where ${orders.status} = 'DELIVERED')`,
+      cancelled: sql<number>`count(*) filter (where ${orders.status} = 'CANCELLED')`,
+      activeDeliveries: sql<number>`count(*) filter (where ${orders.status} in ('ASSIGNED','PICKED_UP','ON_THE_WAY'))`,
+      pendingPayments: sql<number>`count(*) filter (where ${orders.paymentMethod} = 'UPI' and ${orders.paymentStatus} in ('PENDING','AWAITING_VERIFICATION') and ${orders.status} <> 'CANCELLED')`,
+      revenueToday: sql<number>`coalesce(sum(${orders.totalPaise}) filter (where ${orders.status} = 'DELIVERED' and ${orders.deliveredAt} >= ${today.toISOString()}), 0)`,
       revenue: sql<number>`coalesce(sum(${orders.totalPaise}) filter (where ${orders.status} = 'DELIVERED'), 0)`,
       commission: sql<number>`coalesce(sum(${orders.commissionPaise}) filter (where ${orders.status} = 'DELIVERED'), 0)`,
     }).from(orders);
@@ -405,7 +414,7 @@ adminRouter.get('/analytics', async (_req, res, next) => {
       day: sql<string>`to_char(${orders.placedAt}, 'YYYY-MM-DD')`,
       orders: sql<number>`count(*)`,
       revenue: sql<number>`coalesce(sum(${orders.totalPaise}), 0)`,
-    }).from(orders).where(gte(orders.placedAt, since))
+    }).from(orders).where(and(gte(orders.placedAt, since), sql`${orders.status} <> 'CANCELLED'`))
       .groupBy(sql`to_char(${orders.placedAt}, 'YYYY-MM-DD')`)
       .orderBy(sql`to_char(${orders.placedAt}, 'YYYY-MM-DD')`);
 
@@ -414,6 +423,7 @@ adminRouter.get('/analytics', async (_req, res, next) => {
       orders: sql<number>`count(${orders.id})`,
       revenue: sql<number>`coalesce(sum(${orders.totalPaise}), 0)`,
     }).from(orders).innerJoin(vendors, eq(orders.vendorId, vendors.id))
+      .where(sql`${orders.status} <> 'CANCELLED'`)
       .groupBy(vendors.id, vendors.name)
       .orderBy(sql`count(${orders.id}) desc`).limit(10);
 
@@ -429,6 +439,15 @@ adminRouter.get('/analytics', async (_req, res, next) => {
         todayOrders: Number(orderAgg.todayCount),
         pendingOrders: Number(orderAgg.pending),
         deliveredOrders: Number(orderAgg.delivered),
+        cancelledOrders: Number(orderAgg.cancelled),
+        activeDeliveries: Number(orderAgg.activeDeliveries),
+        pendingPayments: Number(orderAgg.pendingPayments),
+        revenueTodayPaise: Number(orderAgg.revenueToday),
+        pendingVendorApprovals: Number(counts.pendingVendorApprovals),
+        pendingRiderApprovals: Number(counts.pendingRiderApprovals),
+        failedPayments: Number(counts.failedPayments),
+        refunds: Number(counts.refunds),
+        pendingRefunds: Number(counts.pendingRefunds),
         revenuePaise: Number(orderAgg.revenue),
         commissionPaise: Number(orderAgg.commission),
       },

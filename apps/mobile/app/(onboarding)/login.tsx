@@ -69,12 +69,13 @@ export default function LoginScreen() {
           </>
         )}
 
+        {__DEV__ && (
         <View style={{ marginTop: spacing.xl, padding: spacing.md, backgroundColor: '#F1EAE0', borderRadius: 12 }}>
           <AppText variant="caption" color={colors.textMuted}>
-            Demo accounts (password Doraha@123): vendor@dorahaeats.local · delivery@dorahaeats.local · admin@dorahaeats.local.
-            Customer OTP prints to the server console in development.
+            Dev build only — seeded local accounts use your local DEMO_PASSWORD. Customer OTP prints to the server console in development.
           </AppText>
         </View>
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );

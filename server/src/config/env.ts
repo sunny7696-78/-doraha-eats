@@ -12,7 +12,7 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   DEMO_PASSWORD: z.string().default('Doraha@123'),
-  SEED_DEMO_DATA: bool(true),
+  SEED_DEMO_DATA: bool(false), // opt-in only: seed script refuses to run unless this is "true"
   GOOGLE_CLIENT_IDS: z.string().optional(), // comma-separated web/android/ios OAuth client ids
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_TEMPLATE_ID: z.string().optional(),

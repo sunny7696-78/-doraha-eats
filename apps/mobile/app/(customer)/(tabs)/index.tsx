@@ -27,7 +27,7 @@ export default function HomeScreen() {
       setConfig(cfg);
 
       // Resolve the customer's default saved address, or fall back to the
-      // first active zone's centre so the demo flow works with no GPS.
+      // first active zone's centre (from the admin-managed zones) when no address exists yet.
       const { addresses } = await listAddresses();
       const primary = addresses.find((a) => a.isDefault) ?? addresses[0];
 
