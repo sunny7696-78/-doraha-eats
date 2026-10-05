@@ -2,9 +2,13 @@ import { and, asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { categories, foodItems, vendorHours, vendors, reviews, users } from '../db/schema.js';
 import { Errors } from '../lib/errors.js';
+import { isProd } from '../config/env.js';
 import { distanceMeters } from '../lib/geo.js';
 import { isVendorOpen, nextOpeningLabel } from './vendorHours.service.js';
 import { getZoneById } from './zone.service.js';
+
+/** Defence in depth: even if a demo row ever reaches a production DB, customers never see it. */
+const realVendorsOnly = () => (isProd ? eq(vendors.isDemo, false) : undefined);
 
 export async function listCategories() {
   return db.select().from(categories)
@@ -20,7 +24,7 @@ export async function listVendors(input: {
   if (!zone || !zone.isActive) throw Errors.outOfZone();
 
   const rows = await db.query.vendors.findMany({
-    where: and(eq(vendors.zoneId, input.zoneId), eq(vendors.status, 'ACTIVE')),
+    where: and(eq(vendors.zoneId, input.zoneId), eq(vendors.status, 'ACTIVE'), realVendorsOnly()),
     with: { hours: true, categories: true },
   });
 
@@ -69,7 +73,7 @@ export async function getVendorBySlug(slug: string) {
     where: eq(vendors.slug, slug),
     with: { hours: true, zone: true, categories: { with: { category: true } } },
   });
-  if (!vendor || vendor.status !== 'ACTIVE') throw Errors.notFound('Stall');
+  if (!vendor || vendor.status !== 'ACTIVE' || (isProd && vendor.isDemo)) throw Errors.notFound('Stall');
 
   const open = isVendorOpen(vendor.isOpenManual, vendor.hours);
   return {
@@ -109,7 +113,7 @@ export async function search(input: { q: string; zoneId: string }) {
   const term = `%${input.q}%`;
 
   const matchedVendors = await db.query.vendors.findMany({
-    where: and(eq(vendors.zoneId, input.zoneId), eq(vendors.status, 'ACTIVE'), ilike(vendors.name, term)),
+    where: and(eq(vendors.zoneId, input.zoneId), eq(vendors.status, 'ACTIVE'), ilike(vendors.name, term), realVendorsOnly()),
     with: { hours: true },
     limit: 20,
   });
@@ -122,6 +126,7 @@ export async function search(input: { q: string; zoneId: string }) {
     .where(and(
       eq(vendors.zoneId, input.zoneId),
       eq(vendors.status, 'ACTIVE'),
+      realVendorsOnly(),
       eq(foodItems.isAvailable, true),
       or(ilike(foodItems.name, term), ilike(foodItems.description, term), ilike(categories.name, term)),
     ))

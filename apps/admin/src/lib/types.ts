@@ -38,6 +38,9 @@ export type AnalyticsResponse = {
     activeDeliveryPartners: number; onlineDeliveryPartners: number; totalFoodItems: number;
     totalOrders: number; todayOrders: number; pendingOrders: number; deliveredOrders: number;
     revenuePaise: number; commissionPaise: number;
+    cancelledOrders: number; activeDeliveries: number; pendingPayments: number; revenueTodayPaise: number;
+    pendingVendorApprovals: number; pendingRiderApprovals: number;
+    failedPayments: number; refunds: number; pendingRefunds: number;
   };
   charts: {
     daily: Array<{ day: string; orders: number; revenuePaise: number }>;

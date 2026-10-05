@@ -4,7 +4,7 @@
  * Rule: every money value is an INTEGER number of PAISE. Never a float.
  * Rule: every table carries createdAt / updatedAt.
  */
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   pgTable, pgEnum, uuid, text, integer, boolean, timestamp,
   doublePrecision, jsonb, uniqueIndex, index, primaryKey,
@@ -426,6 +426,10 @@ export const deliveryAssignments = pgTable('delivery_assignments', {
   ...ts(),
 }, (t) => ({
   uniq: uniqueIndex('assignment_order_partner_uniq').on(t.orderId, t.partnerId),
+  // At most ONE rider can hold a given order (accepted or completed). This is the DB-level
+  // guarantee behind "two riders claim the same order" - the loser's insert is rejected.
+  activeUniq: uniqueIndex('assignment_order_active_uniq').on(t.orderId)
+    .where(sql`${t.state} in ('ACCEPTED','COMPLETED')`),
   partnerIdx: index('assignments_partner_idx').on(t.partnerId, t.state),
 }));
 
