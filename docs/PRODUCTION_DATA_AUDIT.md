@@ -24,3 +24,9 @@ Prices, fees, tax and totals are computed server-side (`pricing.service.ts`); pa
 4. Vendor app cannot add menu items/photos (API only).
 5. Provider config needed before launch: Razorpay keys + webhook secret, MSG91 key/template, non-local storage (S3/Cloudinary), explicit `CORS_ORIGINS`, 32+ char `JWT_SECRET`, maps provider.
 6. Concurrency integration tests need `TEST_DATABASE_URL` and were not run here (no Postgres); add a two-rider simultaneous-claim test.
+
+## Update: mobile Razorpay checkout
+- `apps/mobile/src/features/payments/razorpay.ts` opens Razorpay using the server-created Razorpay order; the signed result is verified by the backend (`/orders/:id/payment/verify`), and the webhook is the second confirmation. The UI shows "Paid" only from the database `paymentStatus`.
+- Checkout sends an `Idempotency-Key` so double-taps never create two orders. The order screen has "Pay now" (reuses the same Razorpay order, no double charge).
+- Requires a native build (not Expo Go): `npm i && eas build --profile development --platform android` (adds `expo-dev-client` + `react-native-razorpay`). Test with Razorpay TEST keys first.
+- Blocker 1 above is resolved in code; it still needs device testing with real keys and the webhook URL set in the Razorpay dashboard.

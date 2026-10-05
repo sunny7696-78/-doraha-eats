@@ -19,8 +19,15 @@ export type OrderDetail = {
   payment: { provider: string; status: string; raw?: { upiUri?: string; instructions?: string } } | null;
 };
 
-export const placeOrder = (input: { addressId: string; paymentMethod: 'COD' | 'UPI'; cookingNote?: string }) =>
-  api<{ order: OrderDetail }>('/orders', { method: 'POST', body: input });
+export type PaymentCheckout = {
+  keyId: string; razorpayOrderId: string; amountPaise: number; currency: string; name: string; description: string;
+};
+
+/** `idempotencyKey`: one fresh key per checkout attempt, so a double-tap or retry never creates two orders. */
+export const placeOrder = (input: { addressId: string; paymentMethod: 'COD' | 'UPI'; cookingNote?: string }, idempotencyKey?: string) =>
+  api<{ order: OrderDetail & { paymentCheckout?: PaymentCheckout | null } }>('/orders', {
+    method: 'POST', body: input, headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  });
 
 export const listMyOrders = () => api<{ orders: OrderDetail[] }>('/orders');
 
