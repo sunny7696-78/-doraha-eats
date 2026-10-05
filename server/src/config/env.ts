@@ -13,6 +13,9 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   DEMO_PASSWORD: z.string().default('Doraha@123'),
   SEED_DEMO_DATA: bool(true),
+  GOOGLE_CLIENT_IDS: z.string().optional(), // comma-separated web/android/ios OAuth client ids
+  MSG91_AUTH_KEY: z.string().optional(),
+  MSG91_TEMPLATE_ID: z.string().optional(),
   PAYMENT_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
   SMS_PROVIDER: z.enum(['console', 'msg91']).default('console'),
   PUSH_PROVIDER: z.enum(['inapp', 'expo', 'fcm']).default('inapp'),
@@ -48,6 +51,7 @@ function productionProblems(e: z.infer<typeof schema>): string[] {
   if (e.JWT_SECRET.length < 32) p.push('JWT_SECRET must be at least 32 characters in production.');
   if (e.SEED_DEMO_DATA) p.push('SEED_DEMO_DATA must be "false" in production.');
   if (e.DEMO_PASSWORD === 'Doraha@123') p.push('Do not run production with the default DEMO_PASSWORD.');
+  if (e.SMS_PROVIDER === 'msg91' && (!e.MSG91_AUTH_KEY || !e.MSG91_TEMPLATE_ID)) p.push('MSG91_AUTH_KEY and MSG91_TEMPLATE_ID are required for SMS_PROVIDER=msg91.');
   if (e.SMS_PROVIDER === 'console') p.push('SMS_PROVIDER=console is not allowed in production.');
   if (e.STORAGE_PROVIDER === 'local') p.push('STORAGE_PROVIDER=local is not allowed in production.');
   return p;
