@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: string; body?: unknown; token?: string; skipAuth?: boolean };
+type Options = { method?: string; body?: unknown; token?: string; skipAuth?: boolean; headers?: Record<string, string> };
 
 export async function api<T = unknown>(path: string, opts: Options = {}): Promise<T> {
   const token = opts.token ?? (opts.skipAuth ? undefined : useAuthStore.getState().token);
@@ -24,6 +24,7 @@ export async function api<T = unknown>(path: string, opts: Options = {}): Promis
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers ?? {}),
       },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });

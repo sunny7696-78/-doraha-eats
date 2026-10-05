@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, AppText, Button, Divider, LoadingBlock, Badge } from '../../../src/components/ui';
@@ -8,6 +8,7 @@ import { quoteCart, type Quote } from '../../../src/features/cart/api';
 import { formatPaise } from '../../../src/lib/money';
 import { ApiError } from '../../../src/lib/api';
 import { t } from '../../../src/lib/i18n';
+import { payForOrder } from '../../../src/features/payments/razorpay';
 
 export default function CheckoutScreen() {
   const router = useRouter();
@@ -18,6 +19,8 @@ export default function CheckoutScreen() {
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One key per checkout attempt: double-taps / retries return the same order instead of a duplicate.
+  const attemptKey = useRef(`co_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
     listAddresses().then(({ addresses }) => {
@@ -37,7 +40,13 @@ export default function CheckoutScreen() {
     if (!selectedId) return;
     setPlacing(true); setError(null);
     try {
-      const { order } = await placeOrder({ addressId: selectedId, paymentMethod: method });
+      const { order } = await placeOrder({ addressId: selectedId, paymentMethod: method }, attemptKey.current);
+      // Online payment: open Razorpay now. Whatever happens, the order screen shows the
+      // database-backed status and offers "Pay now" again if payment did not complete.
+      if (method === 'UPI' && order.paymentCheckout) {
+        const r = await payForOrder(order.id, order.paymentCheckout, { contact: order.contactPhone });
+        if (r.kind === 'failed') setError(r.message);
+      }
       router.replace(`/(customer)/orders/${order.id}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not place order. Please try again.');
