@@ -306,6 +306,8 @@ export const orders = pgTable('orders', {
   cookingNote: text('cooking_note'),
   cancelReason: text('cancel_reason'),
   cancelledById: uuid('cancelled_by_id').references(() => users.id),
+  /** Client-supplied key so a double-tap / retry never creates a second order. */
+  idempotencyKey: text('idempotency_key'),
 
   placedAt: timestamp('placed_at', { withTimezone: true }).notNull().defaultNow(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
@@ -317,6 +319,7 @@ export const orders = pgTable('orders', {
   vendorIdx: index('orders_vendor_idx').on(t.vendorId, t.status),
   zoneIdx: index('orders_zone_idx').on(t.zoneId, t.placedAt),
   statusIdx: index('orders_status_idx').on(t.status),
+  idempotencyUniq: uniqueIndex('orders_customer_idem_uniq').on(t.customerId, t.idempotencyKey),
 }));
 
 export const orderItems = pgTable('order_items', {
@@ -361,8 +364,35 @@ export const payments = pgTable('payments', {
   verifiedById: uuid('verified_by_id').references(() => users.id),
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
   raw: jsonb('raw'),
+  currency: text('currency').notNull().default('INR'),
+  providerOrderId: text('provider_order_id'),
+  providerPaymentId: text('provider_payment_id'),
+  failureReason: text('failure_reason'),
+  capturedAt: timestamp('captured_at', { withTimezone: true }),
+  // refund tracking — a refund is only "done" once the provider says PROCESSED
+  refundId: text('refund_id'),
+  refundStatus: text('refund_status'), // INITIATED | PENDING | PROCESSED | FAILED
+  refundAmountPaise: integer('refund_amount_paise'),
+  refundedAt: timestamp('refunded_at', { withTimezone: true }),
   ...ts(),
-});
+}, (t) => ({
+  providerOrderUniq: uniqueIndex('payments_provider_order_uniq').on(t.providerOrderId),
+  providerPaymentUniq: uniqueIndex('payments_provider_payment_uniq').on(t.providerPaymentId),
+}));
+
+/** Every webhook delivery is recorded once; the unique eventId makes retries harmless. */
+export const paymentEvents = pgTable('payment_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  provider: text('provider').notNull(),
+  eventId: text('event_id').notNull(),
+  type: text('type').notNull(),
+  paymentId: uuid('payment_id').references(() => payments.id, { onDelete: 'set null' }),
+  outcome: text('outcome'),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  eventUniq: uniqueIndex('payment_events_event_uniq').on(t.provider, t.eventId),
+}));
 
 /* --------------------------------------------------------------- delivery */
 

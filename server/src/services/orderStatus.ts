@@ -27,7 +27,7 @@ const ALLOWED_ACTORS: Record<OrderStatus, Actor[]> = {
   PICKED_UP:  ['DELIVERY', 'ADMIN'],
   ON_THE_WAY: ['DELIVERY', 'ADMIN'],
   DELIVERED:  ['DELIVERY', 'ADMIN'],
-  CANCELLED:  ['CUSTOMER', 'VENDOR', 'ADMIN'],
+  CANCELLED:  ['CUSTOMER', 'VENDOR', 'ADMIN', 'SYSTEM'],
 };
 
 export const canTransition = (from: OrderStatus, to: OrderStatus): boolean =>

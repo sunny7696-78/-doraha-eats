@@ -1,8 +1,16 @@
 import { env } from '../../config/env.js';
+import { razorpayProvider } from './razorpay.js';
 
 export type PaymentIntent = {
   provider: string;
   reference: string;
+  /** Razorpay order id (online payments only). */
+  providerOrderId?: string;
+  /** Exactly what the mobile app needs to open the Razorpay checkout. No secrets. */
+  checkout?: {
+    keyId: string; razorpayOrderId: string; amountPaise: number; currency: string;
+    name: string; description: string;
+  };
   amountPaise: number;
   /** For UPI: a deep link the mobile app can open. */
   upiUri?: string;
@@ -14,7 +22,10 @@ export interface PaymentProvider {
   readonly name: string;
   createIntent(input: { orderCode: string; amountPaise: number }): Promise<PaymentIntent>;
   verify(input: { reference: string; upiRef?: string }): Promise<{ paid: boolean; providerRef?: string }>;
-  refund(input: { reference: string; amountPaise: number }): Promise<{ refunded: boolean }>;
+  refund(input: {
+    reference: string; amountPaise: number;
+    providerPaymentId?: string; idempotencyKey?: string; orderCode?: string;
+  }): Promise<{ refunded: boolean; refundId?: string; status?: 'PROCESSED' | 'PENDING' | 'FAILED' }>;
 }
 
 /** Cash on delivery — settled by the rider, nothing external to call. */
@@ -56,14 +67,21 @@ export const mockUpiProvider: PaymentProvider = {
   async refund() { return { refunded: true }; },
 };
 
+/**
+ * Picks the provider for an order. Production NEVER falls back to the mock:
+ * env.ts refuses to boot unless PAYMENT_PROVIDER=razorpay with all keys set,
+ * and this function throws instead of returning the mock if that is violated.
+ */
 export function getPaymentProvider(method: 'COD' | 'UPI'): PaymentProvider {
   if (method === 'COD') return codProvider;
   if (env.PAYMENT_PROVIDER === 'razorpay') {
-    // Razorpay keys are optional; fall back rather than crash the MVP.
     if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
-      console.warn('[payments] RAZORPAY_* keys missing — using mock UPI provider.');
-      return mockUpiProvider;
+      throw new Error('PAYMENT_PROVIDER=razorpay but RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are missing.');
     }
+    return razorpayProvider;
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new Error('Mock payments are not allowed in production.');
   }
   return mockUpiProvider;
 }

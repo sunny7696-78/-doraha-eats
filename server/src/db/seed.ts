@@ -21,6 +21,12 @@ import { env } from '../config/env.js';
 import { DEFAULT_SETTINGS } from '../services/settings.service.js';
 import { generateOrderCode } from '../lib/orderCode.js';
 
+// Demo data must never reach a live database.
+if (env.NODE_ENV === 'production') {
+  console.error('Refusing to seed demo data when NODE_ENV=production.');
+  process.exit(1);
+}
+
 const DEMO_PASSWORD = env.DEMO_PASSWORD;
 
 // Doraha town centre. Used as the anchor for demo coordinates.
