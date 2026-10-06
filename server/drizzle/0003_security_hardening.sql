@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "token_version" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "assignment_one_live_rider_uniq" ON "delivery_assignments" USING btree ("order_id") WHERE "delivery_assignments"."state" in ('ACCEPTED', 'COMPLETED');

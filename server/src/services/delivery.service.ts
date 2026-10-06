@@ -104,6 +104,18 @@ export async function acceptDelivery(userId: string, orderId: string) {
     .where(and(eq(deliveryAssignments.orderId, orderId), eq(deliveryAssignments.state, 'ACCEPTED'))).limit(1);
   if (taken) throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
 
+  // The order's status change is the atomic gate (compare-and-set READY -> ASSIGNED): of two riders
+  // tapping Accept at once, exactly one wins; the other gets ORDER_CHANGED and NO assignment row.
+  // (A partial unique index on delivery_assignments is the database-level backstop.)
+  let assigned;
+  try {
+    assigned = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId, expectFrom: 'READY' });
+  } catch (e) {
+    if ((e as { code?: string })?.code === 'ORDER_CHANGED') {
+      throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
+    }
+    throw e;
+  }
   await db.insert(deliveryAssignments).values({
     orderId, partnerId: partner.id, state: 'ACCEPTED',
     payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
@@ -121,8 +133,8 @@ export async function acceptDelivery(userId: string, orderId: string) {
       data: { orderId: order.id },
     });
   }
+  return assigned;
 
-  return changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId });
 }
 
 async function requireOwnAssignment(userId: string, orderId: string) {
@@ -205,12 +217,43 @@ export async function getPartnerEarnings(userId: string) {
 export async function adminAssign(orderId: string, partnerId: string, adminUserId: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) throw Errors.notFound('Order');
+  const [partner] = await db.select().from(deliveryPartners).where(eq(deliveryPartners.id, partnerId)).limit(1);
+  if (!partner || partner.status !== 'ACTIVE') throw Errors.badRequest('That delivery partner is not active.', 'PARTNER_NOT_ACTIVE');
   const settings = await getSettings();
+  // Status change first (atomic gate), assignment row only if it succeeded.
+  const assigned = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'ADMIN', actorUserId: adminUserId, note: 'Assigned by admin', expectFrom: 'READY' });
   await db.insert(deliveryAssignments).values({
     orderId, partnerId, state: 'ACCEPTED', payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
   }).onConflictDoUpdate({
     target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
     set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
   });
-  return changeStatus({ orderId, to: 'ASSIGNED', actor: 'ADMIN', actorUserId: adminUserId, note: 'Assigned by admin' });
+  return assigned;
+}
+
+/**
+ * What a rider may see of an order. Their own assigned delivery: everything needed to deliver.
+ * An unclaimed READY order they could still accept: pickup + payout info only, with the
+ * customer's phone and exact address withheld until they accept. Anything else: not found.
+ */
+export async function getOrderForRider<T extends {
+  id: string; status: string; contactPhone: string; addressLine: string; addressLandmark: string | null;
+  addressLatitude: number; addressLongitude: number; customerId: string;
+}>(userId: string, order: T): Promise<T> {
+  const partner = await getPartnerByUserId(userId);
+  const [mine] = await db.select().from(deliveryAssignments)
+    .where(and(
+      eq(deliveryAssignments.orderId, order.id), eq(deliveryAssignments.partnerId, partner.id),
+      inArray(deliveryAssignments.state, ['ACCEPTED', 'COMPLETED']),
+    )).limit(1);
+  if (mine) return order;
+  if (order.status === 'READY' && partner.status === 'ACTIVE') {
+    return {
+      ...order, contactPhone: '', addressLine: '', addressLandmark: null,
+      // roughly 1 km precision is enough to judge distance, not to find the house
+      addressLatitude: Math.round(order.addressLatitude * 100) / 100,
+      addressLongitude: Math.round(order.addressLongitude * 100) / 100,
+    };
+  }
+  throw Errors.notFound('Order');
 }

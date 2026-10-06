@@ -10,12 +10,16 @@ import { customerRouter } from './routes/customer.routes.js';
 import { vendorRouter } from './routes/vendor.routes.js';
 import { deliveryRouter } from './routes/delivery.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
+import { requestContext } from './middleware/requestContext.js';
 import { razorpayWebhook } from './routes/paymentWebhook.routes.js';
 
 export function createApp() {
   const app = express();
 
-  app.set('trust proxy', 1);
+  // Number of reverse proxies in front of the API (Render/Railway/Nginx = 1). Wrong values make
+  // every user share one rate-limit bucket (too low) or let clients spoof their IP (too high).
+  app.set('trust proxy', env.TRUST_PROXY);
+  app.use(requestContext);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors({ origin: corsOrigins, credentials: true }));
   // Webhook FIRST, with the raw body: its signature is computed over the exact bytes sent.

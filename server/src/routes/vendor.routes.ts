@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
@@ -180,13 +181,22 @@ vendorRouter.post('/menu/items/:id/customizations', validate({
   } catch (e) { next(e); }
 });
 
+const UPLOAD_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+
+/**
+ * Signs an image upload. The client never chooses the storage path: the file name is ignored
+ * (so "../" tricks are impossible), the extension comes from an allow-listed content type, and
+ * the key is random and namespaced to THIS vendor.
+ */
 vendorRouter.post('/uploads/sign', validate({
-  body: z.object({ filename: z.string().min(1), contentType: z.string().min(3) }),
+  body: z.object({ filename: z.string().max(200).optional(), contentType: z.string().max(100) }),
 }), async (req, res, next) => {
   try {
     const v = await myVendor(req.user!.id);
-    const key = `vendors/${v.id}/${Date.now()}-${req.body.filename}`;
-    res.json(await storageProvider.signedUpload(key, req.body.contentType));
+    const ext = UPLOAD_TYPES[String(req.body.contentType).toLowerCase()];
+    if (!ext) throw Errors.badRequest('Only JPEG, PNG or WebP images can be uploaded.', 'UNSUPPORTED_FILE_TYPE');
+    const key = `vendors/${v.id}/${crypto.randomUUID()}.${ext}`;
+    res.json({ ...(await storageProvider.signedUpload(key, req.body.contentType)), maxBytes: 5 * 1024 * 1024 });
   } catch (e) { next(e); }
 });
 

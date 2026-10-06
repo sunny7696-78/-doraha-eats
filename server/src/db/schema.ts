@@ -4,7 +4,7 @@
  * Rule: every money value is an INTEGER number of PAISE. Never a float.
  * Rule: every table carries createdAt / updatedAt.
  */
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   pgTable, pgEnum, uuid, text, integer, boolean, timestamp,
   doublePrecision, jsonb, uniqueIndex, index, primaryKey,
@@ -58,6 +58,8 @@ export const users = pgTable('users', {
   phone: text('phone').unique(),
   passwordHash: text('password_hash'),
   googleId: text('google_id').unique(),
+  /** Bumped on logout so every older token stops working. */
+  tokenVersion: integer('token_version').notNull().default(0),
   passwordResetTokenHash: text('password_reset_token_hash'),
   passwordResetExpiresAt: timestamp('password_reset_expires_at', { withTimezone: true }),
   fullName: text('full_name').notNull(),
@@ -426,6 +428,9 @@ export const deliveryAssignments = pgTable('delivery_assignments', {
   ...ts(),
 }, (t) => ({
   uniq: uniqueIndex('assignment_order_partner_uniq').on(t.orderId, t.partnerId),
+  // Database-level guarantee: at most ONE live rider per order, whatever the app code does.
+  oneLiveRider: uniqueIndex('assignment_one_live_rider_uniq').on(t.orderId)
+    .where(sql`${t.state} in ('ACCEPTED', 'COMPLETED')`),
   partnerIdx: index('assignments_partner_idx').on(t.partnerId, t.state),
 }));
 

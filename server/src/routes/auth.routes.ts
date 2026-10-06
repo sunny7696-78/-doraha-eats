@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { validate } from '../middleware/validate.js';
 import { authenticate } from '../middleware/auth.js';
-import { authLimiter, otpLimiter } from '../middleware/rateLimit.js';
+import { authLimiter, loginIdentifierLimiter, otpLimiter } from '../middleware/rateLimit.js';
 import * as auth from '../services/auth.service.js';
 import { db } from '../db/index.js';
 import { deviceTokens } from '../db/schema.js';
@@ -22,7 +22,7 @@ authRouter.post('/register', authLimiter, validate({
   try { res.status(201).json(await auth.register(req.body)); } catch (e) { next(e); }
 });
 
-authRouter.post('/login', authLimiter, validate({
+authRouter.post('/login', authLimiter, loginIdentifierLimiter, validate({
   body: z.object({
     email: z.string().email().optional(),
     phone: z.string().optional(),
@@ -36,6 +36,10 @@ authRouter.post('/google', authLimiter, validate({
   body: z.object({ idToken: z.string().min(20).max(4096) }),
 }), async (req, res, next) => {
   try { res.json(await auth.loginWithGoogle(req.body.idToken)); } catch (e) { next(e); }
+});
+
+authRouter.post('/logout', authenticate, async (req, res, next) => {
+  try { await auth.logoutAll(req.user!.id); res.json({ ok: true }); } catch (e) { next(e); }
 });
 
 authRouter.get('/me', authenticate, async (req, res, next) => {

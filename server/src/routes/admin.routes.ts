@@ -1,3 +1,4 @@
+import { audit } from '../lib/audit.js';
 import * as paymentService from '../services/payment.service.js';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -102,9 +103,14 @@ adminRouter.patch('/users/:id/status', validate({
   body: z.object({ status: z.enum(['ACTIVE', 'SUSPENDED']) }),
 }), async (req, res, next) => {
   try {
+    const [target] = await db.select().from(users).where(eq(users.id, req.params.id)).limit(1);
+    if (!target) throw Errors.notFound('User');
+    if (target.id === req.user!.id) throw Errors.conflict('You cannot change your own account status.', 'SELF_ACTION');
+    if (target.role === 'ADMIN') throw Errors.forbidden('Admin accounts cannot be suspended from here.');
     const [row] = await db.update(users)
-      .set({ status: req.body.status, updatedAt: new Date() }).where(eq(users.id, req.params.id)).returning();
-    if (!row) throw Errors.notFound('User');
+      .set({ status: req.body.status, updatedAt: new Date() }).where(eq(users.id, target.id)).returning();
+    await audit({ actorId: req.user!.id, action: 'USER_STATUS_CHANGED', entityType: 'user', entityId: target.id,
+      before: { status: target.status }, after: { status: row.status } });
     res.json({ user: { id: row.id, status: row.status } });
   } catch (e) { next(e); }
 });
@@ -126,6 +132,7 @@ adminRouter.post('/vendors/:id/approve', async (req, res, next) => {
     const [v] = await db.update(vendors)
       .set({ status: 'ACTIVE', updatedAt: new Date() }).where(eq(vendors.id, req.params.id)).returning();
     if (!v) throw Errors.notFound('Vendor');
+    await audit({ actorId: req.user!.id, action: 'VENDOR_APPROVED', entityType: 'vendor', entityId: v.id });
     res.json({ vendor: v });
   } catch (e) { next(e); }
 });
@@ -135,6 +142,7 @@ adminRouter.post('/vendors/:id/reject', async (req, res, next) => {
     const [v] = await db.update(vendors)
       .set({ status: 'REJECTED', updatedAt: new Date() }).where(eq(vendors.id, req.params.id)).returning();
     if (!v) throw Errors.notFound('Vendor');
+    await audit({ actorId: req.user!.id, action: 'VENDOR_REJECTED', entityType: 'vendor', entityId: v.id });
     res.json({ vendor: v });
   } catch (e) { next(e); }
 });
@@ -147,9 +155,13 @@ adminRouter.patch('/vendors/:id', validate({
   }),
 }), async (req, res, next) => {
   try {
+    const [before] = await db.select().from(vendors).where(eq(vendors.id, req.params.id)).limit(1);
+    if (!before) throw Errors.notFound('Vendor');
     const [v] = await db.update(vendors)
       .set({ ...req.body, updatedAt: new Date() }).where(eq(vendors.id, req.params.id)).returning();
-    if (!v) throw Errors.notFound('Vendor');
+    await audit({ actorId: req.user!.id, action: 'VENDOR_UPDATED', entityType: 'vendor', entityId: v.id,
+      before: { status: before.status, commissionPct: before.commissionPct, zoneId: before.zoneId },
+      after: { status: v.status, commissionPct: v.commissionPct, zoneId: v.zoneId } });
     res.json({ vendor: v });
   } catch (e) { next(e); }
 });
@@ -172,6 +184,7 @@ adminRouter.post('/delivery-partners/:id/approve', async (req, res, next) => {
       .set({ status: 'ACTIVE', updatedAt: new Date() }).where(eq(deliveryPartners.id, req.params.id)).returning();
     if (!p) throw Errors.notFound('Delivery partner');
     await db.update(users).set({ status: 'ACTIVE' }).where(eq(users.id, p.userId));
+    await audit({ actorId: req.user!.id, action: 'RIDER_APPROVED', entityType: 'delivery_partner', entityId: p.id });
     res.json({ partner: p });
   } catch (e) { next(e); }
 });
@@ -182,6 +195,7 @@ adminRouter.post('/delivery-partners/:id/reject', async (req, res, next) => {
       .set({ status: 'REJECTED', isOnline: false, updatedAt: new Date() })
       .where(eq(deliveryPartners.id, req.params.id)).returning();
     if (!p) throw Errors.notFound('Delivery partner');
+    await audit({ actorId: req.user!.id, action: 'RIDER_REJECTED', entityType: 'delivery_partner', entityId: p.id });
     res.json({ partner: p });
   } catch (e) { next(e); }
 });
@@ -228,10 +242,13 @@ adminRouter.post('/orders/:id/cancel', validate({
   body: z.object({ reason: z.string().min(3).max(200) }),
 }), async (req, res, next) => {
   try {
-    res.json({ order: await orderService.changeStatus({
+    const order = await orderService.changeStatus({
       orderId: req.params.id, to: 'CANCELLED', actor: 'ADMIN',
       actorUserId: req.user!.id, note: req.body.reason,
-    }) });
+    });
+    await audit({ actorId: req.user!.id, action: 'ORDER_CANCELLED_BY_ADMIN', entityType: 'order',
+      entityId: req.params.id, after: { reason: req.body.reason } });
+    res.json({ order });
   } catch (e) { next(e); }
 });
 
@@ -255,6 +272,7 @@ adminRouter.post('/payments/:id/verify', async (req, res, next) => {
       throw Errors.conflict('This payment is confirmed automatically by the payment gateway.', 'GATEWAY_PAYMENT');
     }
     await paymentService.markPaid({ paymentRowId: p.id, verifiedById: req.user!.id });
+    await audit({ actorId: req.user!.id, action: 'PAYMENT_MANUALLY_VERIFIED', entityType: 'payment', entityId: p.id, after: { amountPaise: p.amountPaise } });
     const [fresh] = await db.select().from(payments).where(eq(payments.id, p.id)).limit(1);
     res.json({ payment: fresh });
   } catch (e) { next(e); }
@@ -270,6 +288,8 @@ adminRouter.post('/payments/:id/refund', async (req, res, next) => {
       throw Errors.conflict('Only cancelled orders can be refunded.', 'ORDER_NOT_CANCELLED');
     }
     const outcome = await paymentService.refundOrderPayment(row.o.id, 'Admin refund');
+    await audit({ actorId: req.user!.id, action: 'REFUND_REQUESTED', entityType: 'payment', entityId: row.p.id,
+      after: { outcome, amountPaise: row.p.amountPaise } });
     const [fresh] = await db.select().from(payments).where(eq(payments.id, row.p.id)).limit(1);
     res.json({ outcome, payment: fresh });
   } catch (e) { next(e); }
@@ -375,7 +395,12 @@ adminRouter.put('/settings', validate({
     supportPhone: z.string().optional(),
   }),
 }), async (req, res, next) => {
-  try { res.json({ settings: await updateSettings(req.body) }); } catch (e) { next(e); }
+  try {
+    const before = await getSettings();
+    const after = await updateSettings(req.body);
+    await audit({ actorId: req.user!.id, action: 'SETTINGS_CHANGED', entityType: 'settings', before, after });
+    res.json({ settings: after });
+  } catch (e) { next(e); }
 });
 
 adminRouter.get('/analytics', async (_req, res, next) => {

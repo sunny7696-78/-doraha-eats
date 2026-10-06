@@ -39,7 +39,7 @@ deliveryRouter.get('/available', async (req, res, next) => {
 
 deliveryRouter.get('/orders/:id', async (req, res, next) => {
   try {
-    const order = await orderService.getOrderDetail(req.params.id);
+    const order = await delivery.getOrderForRider(req.user!.id, await orderService.getOrderDetail(req.params.id));
     res.json({
       order,
       navigation: {
