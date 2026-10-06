@@ -18,11 +18,17 @@ export async function notify(input: {
     userId: input.userId, type: input.type, title: input.title,
     body: input.body, data: input.data ?? null,
   });
-  const tokens = await db.select().from(deviceTokens).where(eq(deviceTokens.userId, input.userId));
-  if (tokens.length) {
-    await pushProvider.send(tokens.map((t) => t.token), {
-      title: input.title, body: input.body, data: input.data,
-    });
+  // The DB row above is the source of truth. Push is best-effort and must never make the
+  // caller (an order status change, a payment confirmation...) fail after its work is committed.
+  try {
+    const tokens = await db.select().from(deviceTokens).where(eq(deviceTokens.userId, input.userId));
+    if (tokens.length) {
+      await pushProvider.send(tokens.map((t) => t.token), {
+        title: input.title, body: input.body, data: input.data,
+      });
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ at: 'notify', msg: 'push failed', err: String((e as Error)?.message ?? e) }));
   }
 }
 
