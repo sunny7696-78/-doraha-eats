@@ -5,6 +5,9 @@ import { startPaymentSweeper } from './services/paymentSweeper.js';
 
 const app = createApp();
 startPaymentSweeper();
+if (env.NODE_ENV === 'production' && env.PUSH_PROVIDER === 'inapp') {
+  console.warn('[config] PUSH_PROVIDER=inapp: customers/vendors/riders will NOT get background push notifications. Set PUSH_PROVIDER=expo.');
+}
 
 app.listen(env.PORT, async () => {
   const s = await getSettings().catch(() => null);
