@@ -10,6 +10,7 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   CORS_ORIGINS: z.string().default('*'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
   JWT_EXPIRES_IN: z.string().default('7d'),
   DEMO_PASSWORD: z.string().default('Doraha@123'),
   SEED_DEMO_DATA: bool(false), // opt-in only: seed script refuses to run unless this is "true"
