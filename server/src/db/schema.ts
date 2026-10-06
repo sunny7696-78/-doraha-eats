@@ -58,6 +58,8 @@ export const users = pgTable('users', {
   phone: text('phone').unique(),
   passwordHash: text('password_hash'),
   googleId: text('google_id').unique(),
+  /** Bumped on logout so every older token stops working. */
+  tokenVersion: integer('token_version').notNull().default(0),
   passwordResetTokenHash: text('password_reset_token_hash'),
   passwordResetExpiresAt: timestamp('password_reset_expires_at', { withTimezone: true }),
   fullName: text('full_name').notNull(),

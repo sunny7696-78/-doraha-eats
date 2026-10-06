@@ -65,7 +65,7 @@ export async function register(input: {
       if (role === 'DELIVERY') await tx.insert(deliveryPartners).values({ userId: u.id, status: 'PENDING' });
       return u;
     });
-    return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role }) };
+    return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role, tv: user.tokenVersion }) };
   } catch (e) {
     if (isUniqueViolation(e)) throw Errors.conflict('An account with these details already exists.', 'ACCOUNT_EXISTS');
     throw e;
@@ -90,7 +90,7 @@ export async function login(input: { email?: string; phone?: string; password: s
   if (user.status === 'SUSPENDED') throw Errors.forbidden('This account has been suspended.');
 
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-  return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role }) };
+  return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role, tv: user.tokenVersion }) };
 }
 
 export async function me(userId: string) {
@@ -191,7 +191,7 @@ export async function verifyOtp(rawPhone: string, code: string, fullName?: strin
     }
   }
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-  return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role }) };
+  return { user: toPublic(user), token: signToken({ sub: user.id, role: user.role, tv: user.tokenVersion }) };
 }
 
 /* ------------------------------------------------------------------- Google */
@@ -214,7 +214,7 @@ export async function loginWithGoogle(idToken: string) {
   const finish = async (u: typeof users.$inferSelect) => {
     if (u.status === 'SUSPENDED') throw Errors.accountSuspended();
     await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, u.id));
-    return { user: toPublic(u), token: signToken({ sub: u.id, role: u.role }) };
+    return { user: toPublic(u), token: signToken({ sub: u.id, role: u.role, tv: u.tokenVersion }) };
   };
 
   // Case 1
@@ -257,4 +257,10 @@ export async function loginWithGoogle(idToken: string) {
     if (!again || again.role !== 'CUSTOMER') throw Errors.googleNotAllowed();
     return finish(again);
   }
+}
+
+/** Logs the user out everywhere: every token issued so far stops working. */
+export async function logoutAll(userId: string) {
+  await db.update(users).set({ tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
+    .where(eq(users.id, userId));
 }

@@ -244,11 +244,20 @@ export async function changeStatus(input: {
   actor: Actor;
   actorUserId?: string;
   note?: string;
+  /**
+   * For "claim" actions (rider accepts a delivery): require the order to still be in this exact
+   * status. Without it, a repeat of an already-applied change is treated as a harmless no-op —
+   * correct for double-taps, wrong when two different people are racing for one order.
+   */
+  expectFrom?: OrderStatus;
 }) {
   const [order] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
   if (!order) throw Errors.notFound('Order');
 
   const from = order.status as OrderStatus;
+  if (input.expectFrom && from !== input.expectFrom) {
+    throw Errors.conflict('This order was just updated. Please refresh.', 'ORDER_CHANGED');
+  }
   if (from === input.to) return getOrderDetail(order.id);
   if (!canTransition(from, input.to)) throw Errors.invalidTransition(from, input.to);
   if (!actorCanSet(input.actor, input.to)) {

@@ -32,6 +32,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     }
     const [row] = await db.select().from(users).where(eq(users.id, payload.sub)).limit(1);
     if (!row) throw Errors.unauthorized();
+    if ((payload.tv ?? 0) !== row.tokenVersion) throw Errors.unauthorized('Your session has expired. Please log in again.');
     if (row.status === 'SUSPENDED') throw Errors.forbidden('This account has been suspended.');
     req.user = {
       id: row.id, role: row.role, fullName: row.fullName,

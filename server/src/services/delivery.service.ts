@@ -104,34 +104,30 @@ export async function acceptDelivery(userId: string, orderId: string) {
     .where(and(eq(deliveryAssignments.orderId, orderId), inArray(deliveryAssignments.state, ['ACCEPTED', 'COMPLETED']))).limit(1);
   if (taken) throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
 
-  // The partial unique index assignment_order_active_uniq lets exactly ONE rider hold an
-  // order; a simultaneous second claim fails here instead of silently double-assigning.
-  let claimId: string;
+  // The order's status change is the atomic gate (compare-and-set READY -> ASSIGNED): of two riders
+  // tapping Accept at once, exactly one wins; the other gets ORDER_CHANGED and NO assignment row.
+  // The partial unique index assignment_order_active_uniq is the database-level backstop.
+  let result;
   try {
-    const [row] = await db.insert(deliveryAssignments).values({
+    result = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId, expectFrom: 'READY' });
+  } catch (e) {
+    if ((e as { code?: string })?.code === 'ORDER_CHANGED') {
+      throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
+    }
+    throw e;
+  }
+  try {
+    await db.insert(deliveryAssignments).values({
       orderId, partnerId: partner.id, state: 'ACCEPTED',
       payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
     }).onConflictDoUpdate({
       target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
       set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
-    }).returning({ id: deliveryAssignments.id });
-    claimId = row.id;
+    });
   } catch (e: any) {
     if ((e?.code ?? e?.cause?.code) === '23505') {
       throw Errors.conflict('This delivery is no longer available.', 'ALREADY_TAKEN');
     }
-    throw e;
-  }
-
-  let result;
-  try {
-    result = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'DELIVERY', actorUserId: userId });
-  } catch (e) {
-    // Status move failed (order cancelled / changed meanwhile): release the claim so it
-    // cannot linger as a phantom ACCEPTED assignment.
-    await db.update(deliveryAssignments)
-      .set({ state: 'DECLINED', updatedAt: new Date() })
-      .where(eq(deliveryAssignments.id, claimId));
     throw e;
   }
 
@@ -228,12 +224,43 @@ export async function getPartnerEarnings(userId: string) {
 export async function adminAssign(orderId: string, partnerId: string, adminUserId: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) throw Errors.notFound('Order');
+  const [partner] = await db.select().from(deliveryPartners).where(eq(deliveryPartners.id, partnerId)).limit(1);
+  if (!partner || partner.status !== 'ACTIVE') throw Errors.badRequest('That delivery partner is not active.', 'PARTNER_NOT_ACTIVE');
   const settings = await getSettings();
+  // Status change first (atomic gate), assignment row only if it succeeded.
+  const assigned = await changeStatus({ orderId, to: 'ASSIGNED', actor: 'ADMIN', actorUserId: adminUserId, note: 'Assigned by admin', expectFrom: 'READY' });
   await db.insert(deliveryAssignments).values({
     orderId, partnerId, state: 'ACCEPTED', payoutPaise: settings.riderPayoutPaise, respondedAt: new Date(),
   }).onConflictDoUpdate({
     target: [deliveryAssignments.orderId, deliveryAssignments.partnerId],
     set: { state: 'ACCEPTED', respondedAt: new Date(), updatedAt: new Date() },
   });
-  return changeStatus({ orderId, to: 'ASSIGNED', actor: 'ADMIN', actorUserId: adminUserId, note: 'Assigned by admin' });
+  return assigned;
+}
+
+/**
+ * What a rider may see of an order. Their own assigned delivery: everything needed to deliver.
+ * An unclaimed READY order they could still accept: pickup + payout info only, with the
+ * customer's phone and exact address withheld until they accept. Anything else: not found.
+ */
+export async function getOrderForRider<T extends {
+  id: string; status: string; contactPhone: string; addressLine: string; addressLandmark: string | null;
+  addressLatitude: number; addressLongitude: number; customerId: string;
+}>(userId: string, order: T): Promise<T> {
+  const partner = await getPartnerByUserId(userId);
+  const [mine] = await db.select().from(deliveryAssignments)
+    .where(and(
+      eq(deliveryAssignments.orderId, order.id), eq(deliveryAssignments.partnerId, partner.id),
+      inArray(deliveryAssignments.state, ['ACCEPTED', 'COMPLETED']),
+    )).limit(1);
+  if (mine) return order;
+  if (order.status === 'READY' && partner.status === 'ACTIVE') {
+    return {
+      ...order, contactPhone: '', addressLine: '', addressLandmark: null,
+      // roughly 1 km precision is enough to judge distance, not to find the house
+      addressLatitude: Math.round(order.addressLatitude * 100) / 100,
+      addressLongitude: Math.round(order.addressLongitude * 100) / 100,
+    };
+  }
+  throw Errors.notFound('Order');
 }
