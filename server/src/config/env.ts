@@ -19,8 +19,15 @@ const schema = z.object({
   MSG91_TEMPLATE_ID: z.string().optional(),
   PAYMENT_PROVIDER: z.enum(['mock', 'razorpay']).default('mock'),
   SMS_PROVIDER: z.enum(['console', 'msg91']).default('console'),
-  PUSH_PROVIDER: z.enum(['inapp', 'expo', 'fcm']).default('inapp'),
-  STORAGE_PROVIDER: z.enum(['local', 's3', 'cloudinary']).default('local'),
+  PUSH_PROVIDER: z.enum(['inapp', 'expo']).default('inapp'),
+  EXPO_ACCESS_TOKEN: z.string().optional(), // optional: only if you enabled Expo "enhanced push security"
+  STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ENDPOINT: z.string().optional(),       // leave empty for AWS S3; set for R2 / B2 / Spaces
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_PUBLIC_BASE_URL: z.string().optional(), // e.g. https://cdn.example.com or the bucket's public URL
   MAPS_PROVIDER: z.enum(['manual', 'osm', 'google']).default('manual'),
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
@@ -55,6 +62,9 @@ function productionProblems(e: z.infer<typeof schema>): string[] {
   if (e.SMS_PROVIDER === 'msg91' && (!e.MSG91_AUTH_KEY || !e.MSG91_TEMPLATE_ID)) p.push('MSG91_AUTH_KEY and MSG91_TEMPLATE_ID are required for SMS_PROVIDER=msg91.');
   if (e.SMS_PROVIDER === 'console') p.push('SMS_PROVIDER=console is not allowed in production.');
   if (e.STORAGE_PROVIDER === 'local') p.push('STORAGE_PROVIDER=local is not allowed in production.');
+  if (e.STORAGE_PROVIDER === 's3' && (!e.S3_BUCKET || !e.S3_ACCESS_KEY_ID || !e.S3_SECRET_ACCESS_KEY || !e.S3_PUBLIC_BASE_URL)) {
+    p.push('S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and S3_PUBLIC_BASE_URL are required for STORAGE_PROVIDER=s3.');
+  }
   return p;
 }
 const problems = productionProblems(parsed.data);

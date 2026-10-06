@@ -6,7 +6,7 @@ import { hashPassword, verifyPassword } from '../lib/password.js';
 import { signToken } from '../lib/jwt.js';
 import { Errors } from '../lib/errors.js';
 import { smsProvider } from '../adapters/sms/index.js';
-import { otpCodes } from '../db/schema.js';
+import { otpCodes, deviceTokens } from '../db/schema.js';
 import { normalizeEmail, normalizeIndianPhone } from '../lib/phone.js';
 import { verifyGoogleIdToken } from '../adapters/google/index.js';
 
@@ -261,6 +261,8 @@ export async function loginWithGoogle(idToken: string) {
 
 /** Logs the user out everywhere: every token issued so far stops working. */
 export async function logoutAll(userId: string) {
+  // No more pushes to this user's phones after they log out.
+  await db.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
   await db.update(users).set({ tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
     .where(eq(users.id, userId));
 }
