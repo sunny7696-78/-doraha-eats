@@ -45,7 +45,7 @@ export default function VendorsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold">Vendors</h1>
           <p className="text-sm text-neutral-500">Approve, reject or manage local stalls.</p>

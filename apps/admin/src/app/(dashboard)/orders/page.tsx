@@ -33,7 +33,7 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold">Orders</h1>
           <p className="text-sm text-neutral-500">Live view across all zones.</p>

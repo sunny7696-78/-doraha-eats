@@ -39,7 +39,7 @@ export default function SettingsPage() {
       <form onSubmit={save} className="space-y-6">
         <Card>
           <div className="text-sm font-semibold mb-3">Branding</div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <F label="Brand name"><input className="in" value={settings.brandName} onChange={(e) => set('brandName', e.target.value)} /></F>
             <F label="Tagline"><input className="in" value={settings.brandTagline} onChange={(e) => set('brandTagline', e.target.value)} /></F>
             <F label="Primary color"><input className="in" value={settings.brandPrimaryColor} onChange={(e) => set('brandPrimaryColor', e.target.value)} /></F>
@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
         <Card>
           <div className="text-sm font-semibold mb-3">Fees & commission</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <F label="Platform fee (paise)"><input type="number" className="in" value={settings.platformFeePaise} onChange={(e) => set('platformFeePaise', Number(e.target.value))} /></F>
             <F label="Default vendor commission (%)"><input type="number" step="0.1" className="in" value={settings.commissionPct} onChange={(e) => set('commissionPct', Number(e.target.value))} /></F>
             <F label="Tax (%)"><input type="number" step="0.1" className="in" value={settings.taxPct} onChange={(e) => set('taxPct', Number(e.target.value))} /></F>
