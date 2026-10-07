@@ -44,7 +44,7 @@ export default function ZonesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold">Delivery Zones</h1>
           <p className="text-sm text-neutral-500">A new zone is inactive until you switch it on — expansion is always opt-in.</p>
@@ -55,7 +55,7 @@ export default function ZonesPage() {
 
       {showForm && (
         <Card className="mb-6">
-          <form onSubmit={createZone} className="grid grid-cols-3 gap-3">
+          <form onSubmit={createZone} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field label="Name"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="in" /></Field>
             <Field label="Latitude"><input required type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} className="in" /></Field>
             <Field label="Longitude"><input required type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} className="in" /></Field>
@@ -64,7 +64,7 @@ export default function ZonesPage() {
             <Field label="Min order (paise)"><input required type="number" value={form.minOrderPaise} onChange={(e) => setForm({ ...form, minOrderPaise: Number(e.target.value) })} className="in" /></Field>
             <Field label="ETA (min)"><input required type="number" value={form.etaMinutes} onChange={(e) => setForm({ ...form, etaMinutes: Number(e.target.value) })} className="in" /></Field>
             <Field label="Priority"><input required type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} className="in" /></Field>
-            <div className="col-span-3"><Button type="submit">Create zone (inactive)</Button></div>
+            <div className="sm:col-span-2 lg:col-span-3"><Button type="submit">Create zone (inactive)</Button></div>
           </form>
         </Card>
       )}

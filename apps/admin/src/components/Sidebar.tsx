@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useAuth } from './AuthProvider';
 
 const NAV = [
@@ -20,9 +21,18 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [pathname]); // close the drawer after choosing a page
 
   return (
-    <aside className="w-64 shrink-0 border-r border-neutral-200 bg-white flex flex-col h-screen sticky top-0">
+    <>
+    {/* Phone: slim top bar with a menu button */}
+    <div className="md:hidden fixed top-0 inset-x-0 z-30 h-14 bg-white border-b border-neutral-200 flex items-center gap-3 px-4">
+      <button aria-label="Open menu" onClick={() => setOpen(true)} className="text-2xl leading-none px-1">☰</button>
+      <div className="font-bold text-[#E8552D]">Doraha Eats</div>
+    </div>
+    {open && <div className="md:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />}
+    <aside className={`fixed md:sticky top-0 left-0 z-50 w-64 shrink-0 border-r border-neutral-200 bg-white flex flex-col h-screen transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
       <div className="px-5 py-5 border-b border-neutral-200">
         <div className="text-lg font-bold text-[#E8552D]">Doraha Eats</div>
         <div className="text-xs text-neutral-500">Admin panel</div>
@@ -50,5 +60,6 @@ export function Sidebar() {
         <button onClick={logout} className="text-xs text-neutral-500 hover:text-red-600">Log out</button>
       </div>
     </aside>
+    </>
   );
 }
