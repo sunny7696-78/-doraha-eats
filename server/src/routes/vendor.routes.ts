@@ -12,7 +12,7 @@ import {
 import { Errors } from '../lib/errors.js';
 import * as orderService from '../services/order.service.js';
 import { isVendorOpen } from '../services/vendorHours.service.js';
-import { storageProvider } from '../adapters/storage/index.js';
+import { storageProvider, isOwnUploadUrl } from '../adapters/storage/index.js';
 
 export const vendorRouter = Router();
 vendorRouter.use(authenticate, requireRole('VENDOR'));
@@ -22,6 +22,23 @@ async function myVendor(userId: string) {
   const [v] = await db.select().from(vendors).where(eq(vendors.ownerUserId, userId)).limit(1);
   if (!v) throw Errors.notFound('Vendor profile');
   return v;
+}
+
+/** Images must be files this API issued to THIS vendor (no arbitrary external URLs). */
+function assertOwnImages(vendorId: string, ...urls: Array<string | null | undefined>) {
+  for (const u of urls) {
+    if (!isOwnUploadUrl(vendorId, u)) {
+      throw Errors.badRequest('Please upload the image through the app.', 'INVALID_IMAGE_URL');
+    }
+  }
+}
+
+/** A menu section can only be used by the vendor who owns it. */
+async function assertOwnSection(vendorId: string, sectionId?: string) {
+  if (!sectionId) return;
+  const [sec] = await db.select({ id: menuSections.id }).from(menuSections)
+    .where(and(eq(menuSections.id, sectionId), eq(menuSections.vendorId, vendorId))).limit(1);
+  if (!sec) throw Errors.badRequest('That menu section does not belong to your stall.', 'INVALID_SECTION');
 }
 
 async function ownItem(userId: string, itemId: string) {
@@ -54,6 +71,7 @@ vendorRouter.patch('/me', validate({
 }), async (req, res, next) => {
   try {
     const v = await myVendor(req.user!.id);
+    assertOwnImages(v.id, req.body.logoUrl, req.body.coverUrl);
     const [updated] = await db.update(vendors)
       .set({ ...req.body, updatedAt: new Date() }).where(eq(vendors.id, v.id)).returning();
     res.json({ vendor: updated });
@@ -120,6 +138,8 @@ vendorRouter.post('/menu/items', validate({
 }), async (req, res, next) => {
   try {
     const v = await myVendor(req.user!.id);
+    assertOwnImages(v.id, req.body.imageUrl);
+    await assertOwnSection(v.id, req.body.sectionId);
     const [row] = await db.insert(foodItems).values({ ...req.body, vendorId: v.id }).returning();
     res.status(201).json({ item: row });
   } catch (e) { next(e); }
@@ -139,7 +159,9 @@ vendorRouter.patch('/menu/items/:id', validate({
   }),
 }), async (req, res, next) => {
   try {
-    const { item } = await ownItem(req.user!.id, req.params.id);
+    const { item, vendor } = await ownItem(req.user!.id, req.params.id);
+    assertOwnImages(vendor.id, req.body.imageUrl);
+    await assertOwnSection(vendor.id, req.body.sectionId);
     const [updated] = await db.update(foodItems)
       .set({ ...req.body, updatedAt: new Date() }).where(eq(foodItems.id, item.id)).returning();
     res.json({ item: updated });
@@ -189,14 +211,17 @@ const UPLOAD_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png':
  * the key is random and namespaced to THIS vendor.
  */
 vendorRouter.post('/uploads/sign', validate({
-  body: z.object({ filename: z.string().max(200).optional(), contentType: z.string().max(100) }),
+  body: z.object({
+    filename: z.string().max(200).optional(), contentType: z.string().max(100),
+    sizeBytes: z.number().int().min(1).max(5 * 1024 * 1024).optional(),
+  }),
 }), async (req, res, next) => {
   try {
     const v = await myVendor(req.user!.id);
     const ext = UPLOAD_TYPES[String(req.body.contentType).toLowerCase()];
     if (!ext) throw Errors.badRequest('Only JPEG, PNG or WebP images can be uploaded.', 'UNSUPPORTED_FILE_TYPE');
     const key = `vendors/${v.id}/${crypto.randomUUID()}.${ext}`;
-    res.json({ ...(await storageProvider.signedUpload(key, req.body.contentType)), maxBytes: 5 * 1024 * 1024 });
+    res.json(await storageProvider.signedUpload(key, req.body.contentType, req.body.sizeBytes));
   } catch (e) { next(e); }
 });
 

@@ -59,12 +59,18 @@ authRouter.post('/otp/verify', authLimiter, validate({
 });
 
 authRouter.post('/device-token', authenticate, validate({
-  body: z.object({ token: z.string().min(4), platform: z.enum(['android', 'ios', 'web']) }),
+  body: z.object({ token: z.string().min(4).max(300), platform: z.enum(['android', 'ios', 'web']) }),
 }), async (req, res, next) => {
   try {
+    // A device token belongs to the device, not to whoever registered it first. If another account
+    // used this phone before, hand the token to the current user so the previous user's
+    // notifications stop appearing on this phone.
     await db.insert(deviceTokens)
       .values({ userId: req.user!.id, token: req.body.token, platform: req.body.platform })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: deviceTokens.token,
+        set: { userId: req.user!.id, platform: req.body.platform, updatedAt: new Date() },
+      });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
