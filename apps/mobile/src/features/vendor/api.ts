@@ -14,6 +14,9 @@ export const setVendorOpen = (isOpenManual: boolean) =>
 export const listVendorOrders = (status?: OrderStatus) =>
   api<{ orders: OrderDetail[] }>(`/vendor/orders${status ? `?status=${status}` : ''}`);
 
+/** Vendors must use their own endpoint: the customer one (/orders/:id) is customer-only and returns 403. */
+export const getVendorOrder = (id: string) => api<{ order: OrderDetail }>(`/vendor/orders/${id}`);
+
 export const acceptOrder = (id: string, prepTimeMinutes?: number) =>
   api<{ order: OrderDetail }>(`/vendor/orders/${id}/accept`, { method: 'POST', body: { prepTimeMinutes } });
 
