@@ -14,6 +14,12 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   DEMO_PASSWORD: z.string().default('Doraha@123'),
   SEED_DEMO_DATA: bool(false), // opt-in only: seed script refuses to run unless this is "true"
+  EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),            // e.g. "Doraha Eats <no-reply@yourdomain.com>"
+  /** Public https address of THIS API; password-reset links point at its /reset-password page. */
+  APP_URL: z.string().default('http://localhost:4000'),
+  PASSWORD_RESET_TOKEN_TTL_MIN: z.coerce.number().int().min(5).max(180).default(30),
   GOOGLE_CLIENT_IDS: z.string().optional(), // comma-separated web/android/ios OAuth client ids
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_TEMPLATE_ID: z.string().optional(),
