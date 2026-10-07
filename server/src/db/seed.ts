@@ -21,6 +21,17 @@ import { env } from '../config/env.js';
 import { DEFAULT_SETTINGS } from '../services/settings.service.js';
 import { generateOrderCode } from '../lib/orderCode.js';
 
+// Demo data must never reach a live database.
+if (env.NODE_ENV === 'production') {
+  console.error('Refusing to seed demo data when NODE_ENV=production.');
+  process.exit(1);
+}
+// Seeding is an explicit developer action, never an accident.
+if (!env.SEED_DEMO_DATA) {
+  console.error('Refusing to seed: set SEED_DEMO_DATA=true in your LOCAL .env to confirm you want demo data.');
+  process.exit(1);
+}
+
 const DEMO_PASSWORD = env.DEMO_PASSWORD;
 
 // Doraha town centre. Used as the anchor for demo coordinates.

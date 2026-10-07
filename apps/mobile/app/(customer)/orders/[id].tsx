@@ -8,6 +8,7 @@ import { getOrder, cancelOrder, submitUpiRef, submitReview, type OrderDetail } f
 import { formatPaise } from '../../../src/lib/money';
 import { ApiError } from '../../../src/lib/api';
 import { t } from '../../../src/lib/i18n';
+import { getCheckoutForRetry, payForOrder } from '../../../src/features/payments/razorpay';
 
 const POLL_MS = 5000;
 
@@ -18,6 +19,7 @@ export default function OrderDetailScreen() {
   const [utr, setUtr] = useState('');
   const [busy, setBusy] = useState(false);
   const [rating, setRating] = useState(0);
+  const [payMsg, setPayMsg] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(() => {
@@ -35,12 +37,25 @@ export default function OrderDetailScreen() {
 
   const canCancel = order.status === 'PLACED';
   const needsUpi = order.paymentMethod === 'UPI' && order.paymentStatus !== 'PAID';
+  const needsRazorpay = needsUpi && order.status === 'PLACED' && order.payment?.provider === 'razorpay';
 
   async function doCancel() {
     setBusy(true);
     try { const { order: o } = await cancelOrder(id); setOrder(o); }
     catch (e) { setError(e instanceof ApiError ? e.message : 'Could not cancel order.'); }
     finally { setBusy(false); }
+  }
+
+  async function payNow() {
+    setBusy(true); setPayMsg(null);
+    try {
+      const { paymentCheckout } = await getCheckoutForRetry(id);
+      const r = await payForOrder(id, paymentCheckout, { contact: order!.contactPhone });
+      if (r.kind === 'verified' || r.kind === 'processing') setOrder(r.order);
+      if (r.kind === 'processing') setPayMsg('Payment received. Confirming with your bank — this updates automatically.');
+      if (r.kind === 'failed') setPayMsg(r.message);
+    } catch (e) { setPayMsg(e instanceof ApiError ? e.message : 'Could not start payment.'); }
+    finally { setBusy(false); load(); }
   }
 
   async function submitUtr() {
@@ -77,6 +92,17 @@ export default function OrderDetailScreen() {
                 <AppText variant="bodyBold" color={colors.primary}>Call {order.deliveryPartner.phone}</AppText>
               </Pressable>
             )}
+          </Card>
+        )}
+
+        {needsRazorpay && (
+          <Card style={{ marginBottom: spacing.lg }}>
+            <AppText variant="h3">Payment pending</AppText>
+            <AppText variant="body" color={colors.textMuted} style={{ marginVertical: spacing.sm }}>
+              Pay {formatPaise(order.totalPaise)} to confirm this order. The stall is notified only after payment succeeds.
+            </AppText>
+            {payMsg && <AppText variant="body" color={colors.danger} style={{ marginBottom: spacing.sm }}>{payMsg}</AppText>}
+            <Button onPress={payNow} loading={busy}>Pay now</Button>
           </Card>
         )}
 

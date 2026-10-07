@@ -15,6 +15,20 @@
       "when": 1790137644966,
       "tag": "0001_unknown_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791111074026,
+      "tag": "0002_payments_razorpay",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791186491404,
+      "tag": "0003_rider_claim_unique",
+      "breakpoints": true
     }
   ]
 }

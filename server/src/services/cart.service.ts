@@ -5,6 +5,7 @@ import {
   customizationOptions, customizationGroups,
 } from '../db/schema.js';
 import { Errors } from '../lib/errors.js';
+import { isProd } from '../config/env.js';
 import { buildLine, computeOrder, type PriceLine } from './pricing.service.js';
 import { getSettings } from './settings.service.js';
 import { getZoneById } from './zone.service.js';
@@ -96,7 +97,7 @@ export async function addItem(userId: string, input: {
   if (!item.isAvailable) throw Errors.itemUnavailable(item.name);
 
   const [vendor] = await db.select().from(vendors).where(eq(vendors.id, item.vendorId)).limit(1);
-  if (!vendor || vendor.status !== 'ACTIVE') throw Errors.notFound('Stall');
+  if (!vendor || vendor.status !== 'ACTIVE' || (isProd && vendor.isDemo)) throw Errors.notFound('Stall');
 
   // Single-vendor cart: adding from another stall requires clearing first.
   if (cart.vendorId && cart.vendorId !== item.vendorId) {

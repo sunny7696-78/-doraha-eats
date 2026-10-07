@@ -22,7 +22,11 @@
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
     "express-rate-limit": "^7.4.1",
+<<<<<<< HEAD
     "google-auth-library": "^11.1.0",
+=======
+    "google-auth-library": "^9.15.1",
+>>>>>>> 27c0a9374784eadab3dd5f77b201c2a034349c2c
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.23.0",

@@ -12,9 +12,9 @@ export const authRouter = Router();
 authRouter.post('/register', authLimiter, validate({
   body: z.object({
     fullName: z.string().min(2),
-    password: z.string().min(6, 'Password must be at least 6 characters'),
-    email: z.string().email().optional(),
-    phone: z.string().min(10).optional(),
+    password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+    email: z.string().email().max(254).optional(),
+    phone: z.string().min(10).max(20).optional(),
     role: z.enum(['CUSTOMER', 'DELIVERY']).optional(),
     locale: z.enum(['en', 'hi', 'pa']).optional(),
   }),
@@ -30,6 +30,12 @@ authRouter.post('/login', authLimiter, validate({
   }),
 }), async (req, res, next) => {
   try { res.json(await auth.login(req.body)); } catch (e) { next(e); }
+});
+
+authRouter.post('/google', authLimiter, validate({
+  body: z.object({ idToken: z.string().min(20).max(4096) }),
+}), async (req, res, next) => {
+  try { res.json(await auth.loginWithGoogle(req.body.idToken)); } catch (e) { next(e); }
 });
 
 authRouter.get('/me', authenticate, async (req, res, next) => {

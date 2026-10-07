@@ -32,7 +32,9 @@ export default function LoginPage() {
         <input value={password} onChange={(e) => setPassword(e.target.value)} type="password"
           className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-5" required />
         <Button type="submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</Button>
-        <div className="text-xs text-neutral-400 mt-4">Demo: admin@dorahaeats.local / Doraha@123</div>
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="text-xs text-neutral-400 mt-4">Dev only: admin@dorahaeats.local (password from your local DEMO_PASSWORD)</div>
+        )}
       </form>
     </div>
   );
