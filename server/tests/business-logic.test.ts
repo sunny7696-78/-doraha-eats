@@ -160,8 +160,8 @@ describe('delivery zone validation', () => {
 });
 
 describe('vendor opening hours', () => {
-  const monday10am = new Date('2026-09-14T10:30:00');   // a Monday
-  const monday2am = new Date('2026-09-14T02:00:00');
+  const monday10am = new Date('2026-09-14T10:30:00+05:30');   // a Monday
+  const monday2am = new Date('2026-09-14T02:00:00+05:30');
 
   it('is closed when the manual switch is off, whatever the hours say', () => {
     expect(isVendorOpen(false, [hour(1, '09:00', '23:00')], monday10am)).toBe(false);

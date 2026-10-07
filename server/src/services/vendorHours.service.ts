@@ -1,3 +1,4 @@
+import { istClock } from '../lib/time.js';
 import type { vendorHours } from '../db/schema.js';
 
 type Hour = typeof vendorHours.$inferSelect;
@@ -19,8 +20,7 @@ export function isVendorOpen(
   if (!isOpenManual) return false;
   if (!hours.length) return true; // no hours configured yet → treat as always open
 
-  const day = now.getDay();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const { day, mins } = istClock(now); // India time, whatever time zone the server runs in
 
   const windows = hours.filter((h) => h.dayOfWeek === day);
   const yesterdayWindows = hours.filter((h) => h.dayOfWeek === (day + 6) % 7);
@@ -41,12 +41,12 @@ export function isVendorOpen(
 
 export function nextOpeningLabel(hours: Hour[], now: Date = new Date()): string | null {
   if (!hours.length) return null;
-  const day = now.getDay();
+  const { day, mins: nowMins } = istClock(now);
   for (let i = 0; i < 7; i++) {
     const d = (day + i) % 7;
     const todays = hours.filter((h) => h.dayOfWeek === d).sort((a, b) => a.opensAt.localeCompare(b.opensAt));
     for (const w of todays) {
-      if (i > 0 || toMinutes(w.opensAt) > now.getHours() * 60 + now.getMinutes()) {
+      if (i > 0 || toMinutes(w.opensAt) > nowMins) {
         return i === 0 ? `Opens at ${w.opensAt}` : `Opens ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]} ${w.opensAt}`;
       }
     }
