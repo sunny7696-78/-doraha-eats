@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, StyleSheet, TextInput } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Screen, AppText, Button, Card, Divider, LoadingBlock, Badge } from '../../../src/components/ui';
+import { Screen, AppText, Button, Card, Divider, LoadingBlock, Badge, ErrorState } from '../../../src/components/ui';
 import { colors, spacing } from '../../../src/theme/tokens';
-import { acceptOrder, rejectOrder, markPreparing, markReady } from '../../../src/features/vendor/api';
-import { getOrder, type OrderDetail } from '../../../src/features/orders/api';
+import { acceptOrder, rejectOrder, markPreparing, markReady, getVendorOrder } from '../../../src/features/vendor/api';
+import type { OrderDetail } from '../../../src/features/orders/api';
 import { formatPaise } from '../../../src/lib/money';
 import { ApiError } from '../../../src/lib/api';
 import { t } from '../../../src/lib/i18n';
@@ -17,7 +17,13 @@ export default function VendorOrderDetail() {
   const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
 
-  const load = useCallback(() => { getOrder(id).then(({ order }) => setOrder(order)); }, [id]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    setLoadError(null);
+    getVendorOrder(id)
+      .then(({ order }) => setOrder(order))
+      .catch((e) => setLoadError(e instanceof ApiError ? e.message : 'Could not load this order.'));
+  }, [id]);
   useEffect(() => { load(); }, [load]);
 
   async function act(fn: () => Promise<{ order: OrderDetail }>) {
@@ -27,6 +33,7 @@ export default function VendorOrderDetail() {
     finally { setBusy(false); }
   }
 
+  if (loadError && !order) return <Screen><ErrorState message={loadError} onRetry={load} /></Screen>;
   if (!order) return <Screen><LoadingBlock /></Screen>;
 
   return (
