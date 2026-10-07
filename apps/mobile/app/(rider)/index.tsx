@@ -73,7 +73,7 @@ export default function RiderDashboard() {
       <ScrollView contentContainerStyle={{ padding: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <AppText variant="h1">Deliveries</AppText>
-          <Pressable onPress={logout}><AppText variant="caption" color={colors.danger}>Log out</AppText></Pressable>
+          <Pressable onPress={logout} hitSlop={16} style={{ padding: 8 }}><AppText variant="caption" color={colors.danger}>Log out</AppText></Pressable>
         </View>
 
         {partner?.status !== 'ACTIVE' ? (

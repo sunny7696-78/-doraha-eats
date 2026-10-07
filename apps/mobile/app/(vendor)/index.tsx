@@ -46,7 +46,7 @@ export default function VendorDashboard() {
             <AppText variant="h1">{vendor?.name}</AppText>
             <AppText variant="caption" color={colors.textMuted}>{vendor?.status === 'ACTIVE' ? 'Approved' : vendor?.status}</AppText>
           </View>
-          <Pressable onPress={logout}><AppText variant="caption" color={colors.danger}>Log out</AppText></Pressable>
+          <Pressable onPress={logout} hitSlop={16} style={{ padding: 8 }}><AppText variant="caption" color={colors.danger}>Log out</AppText></Pressable>
         </View>
 
         <Card style={{ marginTop: spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

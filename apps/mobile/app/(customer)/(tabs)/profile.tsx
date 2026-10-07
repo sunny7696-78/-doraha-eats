@@ -34,7 +34,7 @@ export default function ProfileTab() {
         ))}
       </Card>
 
-      <Pressable onPress={logout} style={{ marginTop: spacing.xl }}>
+      <Pressable onPress={logout} hitSlop={16} style={{ marginTop: spacing.xl, paddingVertical: 12 }}>
         <AppText variant="bodyBold" color={colors.danger}>Log out</AppText>
       </Pressable>
     </Screen>
