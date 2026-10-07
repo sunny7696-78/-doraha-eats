@@ -1,4 +1,6 @@
 import { audit } from '../lib/audit.js';
+import { hashPassword } from '../lib/password.js';
+import { normalizeEmail, normalizeIndianPhone } from '../lib/phone.js';
 import * as paymentService from '../services/payment.service.js';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -124,6 +126,61 @@ adminRouter.get('/vendors', async (_req, res, next) => {
       orderBy: [desc(vendors.createdAt)],
     });
     res.json({ vendors: rows });
+  } catch (e) { next(e); }
+});
+
+/**
+ * Onboard a REAL stall: creates the owner's VENDOR login and the stall in one transaction.
+ * The owner then logs in to the mobile app with this email + password and builds their own menu.
+ */
+adminRouter.post('/vendors', validate({
+  body: z.object({
+    name: z.string().trim().min(2).max(80),
+    ownerName: z.string().trim().min(2).max(80),
+    phone: z.string().min(10),
+    email: z.string().email(),
+    password: z.string().min(10).max(72),
+    addressLine: z.string().trim().min(5).max(200),
+    zoneId: z.string().uuid().optional(),
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    about: z.string().max(400).optional(),
+    prepTimeMinutes: z.number().int().min(5).max(120).optional(),
+  }),
+}), async (req, res, next) => {
+  try {
+    const b = req.body;
+    const phone = normalizeIndianPhone(b.phone);
+    if (!phone) throw Errors.badRequest('Enter a valid 10-digit Indian mobile number.', 'INVALID_PHONE');
+    const email = normalizeEmail(b.email);
+
+    const [zone] = b.zoneId
+      ? await db.select().from(deliveryZones).where(eq(deliveryZones.id, b.zoneId)).limit(1)
+      : await db.select().from(deliveryZones).where(eq(deliveryZones.isActive, true)).orderBy(desc(deliveryZones.priority)).limit(1);
+    if (!zone) throw Errors.badRequest('Create a delivery zone first.', 'NO_ZONE');
+
+    const [dup] = await db.select({ id: users.id }).from(users)
+      .where(sql`${users.email} = ${email} or ${users.phone} = ${phone}`).limit(1);
+    if (dup) throw Errors.conflict('That email or phone already has an account.', 'ACCOUNT_EXISTS');
+
+    const slug = `${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${Math.random().toString(36).slice(2, 7)}`;
+    const passwordHash = await hashPassword(b.password);
+
+    const vendor = await db.transaction(async (tx) => {
+      const [owner] = await tx.insert(users).values({
+        role: 'VENDOR', fullName: b.ownerName, email, phone, passwordHash, status: 'ACTIVE',
+      }).returning();
+      const [v] = await tx.insert(vendors).values({
+        ownerUserId: owner.id, zoneId: zone.id, name: b.name, slug, ownerName: b.ownerName, phone,
+        about: b.about, addressLine: b.addressLine,
+        latitude: b.latitude ?? zone.latitude, longitude: b.longitude ?? zone.longitude,
+        prepTimeMinutes: b.prepTimeMinutes ?? 20, status: 'ACTIVE', shopStatus: 'OPEN', isDemo: false,
+      }).returning();
+      return v;
+    });
+    await audit({ actorId: req.user!.id, action: 'VENDOR_CREATED', entityType: 'vendor', entityId: vendor.id,
+      after: { name: vendor.name, email } });
+    res.status(201).json({ vendor });
   } catch (e) { next(e); }
 });
 

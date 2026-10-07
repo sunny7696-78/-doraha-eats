@@ -33,3 +33,14 @@ export type MenuSectionAdmin = { id: string; name: string; foodItems: MenuFoodIt
 export const getVendorMenu = () => api<{ sections: MenuSectionAdmin[] }>('/vendor/menu');
 export const setItemAvailability = (id: string, isAvailable: boolean) =>
   api(`/vendor/menu/items/${id}`, { method: 'PATCH', body: { isAvailable } });
+
+export const createMenuSection = (name: string) =>
+  api<{ section: { id: string; name: string } }>('/vendor/menu/sections', { method: 'POST', body: { name } });
+
+export const createMenuItem = (input: { name: string; pricePaise: number; sectionId: string; isVeg: boolean; description?: string }) =>
+  api<{ item: MenuFoodItem }>('/vendor/menu/items', { method: 'POST', body: input });
+
+export const updateMenuItem = (id: string, patch: { name?: string; pricePaise?: number; isVeg?: boolean }) =>
+  api<{ item: MenuFoodItem }>(`/vendor/menu/items/${id}`, { method: 'PATCH', body: patch });
+
+export const deleteMenuItem = (id: string) => api(`/vendor/menu/items/${id}`, { method: 'DELETE' });
