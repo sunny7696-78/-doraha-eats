@@ -11,12 +11,18 @@ import { colors } from '../src/theme/tokens';
  * on the logged-in user's role so a customer, a stall owner and a rider all
  * land in the right place from one app — see the mobile design doc for why.
  */
+import { registerForPush } from '../src/features/push/register';
+
 function RootNavigation() {
   const { user, token, hydrated, hydrate } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => { hydrate(); }, []);
+
+  // Once someone is logged in, register this phone for order alerts.
+  const loggedInUserId = user?.id;
+  useEffect(() => { if (hydrated && loggedInUserId && token) registerForPush(); }, [hydrated, loggedInUserId, token]);
 
   useEffect(() => {
     if (!hydrated) return;

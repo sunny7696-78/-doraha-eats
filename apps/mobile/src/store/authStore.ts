@@ -54,6 +54,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user, token });
   },
   logout: async () => {
+    // Best effort: ask the server to invalidate this token. Never block logging out on it.
+    try {
+      const { api } = await import('../lib/api');
+      await Promise.race([api('/auth/logout', { method: 'POST' }), new Promise((r) => setTimeout(r, 2500))]);
+    } catch { /* offline or already expired - still log out locally */ }
     await Storage.deleteItemAsync(TOKEN_KEY);
     await Storage.deleteItemAsync(USER_KEY);
     set({ user: null, token: null });
