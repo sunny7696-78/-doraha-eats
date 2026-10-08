@@ -42,6 +42,22 @@ authRouter.post('/logout', authenticate, async (req, res, next) => {
   try { await auth.logoutAll(req.user!.id); res.json({ ok: true }); } catch (e) { next(e); }
 });
 
+authRouter.post('/password/forgot', otpLimiter, loginIdentifierLimiter, validate({
+  body: z.object({ email: z.string().email().max(254) }),
+}), async (req, res, next) => {
+  try { res.json(await auth.requestPasswordReset(req.body.email)); } catch (e) { next(e); }
+});
+
+authRouter.post('/password/reset', authLimiter, validate({
+  body: z.object({
+    userId: z.string().uuid(),
+    token: z.string().regex(/^[a-f0-9]{64}$/),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  }),
+}), async (req, res, next) => {
+  try { res.json(await auth.resetPassword(req.body.userId, req.body.token, req.body.newPassword)); } catch (e) { next(e); }
+});
+
 authRouter.get('/me', authenticate, async (req, res, next) => {
   try { res.json({ user: await auth.me(req.user!.id) }); } catch (e) { next(e); }
 });

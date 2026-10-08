@@ -10,6 +10,7 @@ import { customerRouter } from './routes/customer.routes.js';
 import { vendorRouter } from './routes/vendor.routes.js';
 import { deliveryRouter } from './routes/delivery.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
+import { resetPageRouter } from './routes/resetPage.routes.js';
 import { requestContext } from './middleware/requestContext.js';
 import { razorpayWebhook } from './routes/paymentWebhook.routes.js';
 
@@ -24,6 +25,7 @@ export function createApp() {
   app.use(cors({ origin: corsOrigins, credentials: true }));
   // Webhook FIRST, with the raw body: its signature is computed over the exact bytes sent.
   app.post('/api/v1/payments/razorpay/webhook', express.raw({ type: 'application/json', limit: '512kb' }), razorpayWebhook);
+  app.use('/reset-password', resetPageRouter);
   app.use(express.json({ limit: '1mb' }));
   app.use(generalLimiter);
 

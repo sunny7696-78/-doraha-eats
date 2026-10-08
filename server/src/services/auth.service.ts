@@ -4,11 +4,14 @@ import { db } from '../db/index.js';
 import { users, customerProfiles, deliveryPartners, carts } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { signToken } from '../lib/jwt.js';
-import { Errors } from '../lib/errors.js';
+import { Errors, AppError } from '../lib/errors.js';
+import { env } from '../config/env.js';
 import { smsProvider } from '../adapters/sms/index.js';
 import { otpCodes, deviceTokens } from '../db/schema.js';
 import { normalizeEmail, normalizeIndianPhone } from '../lib/phone.js';
 import { verifyGoogleIdToken } from '../adapters/google/index.js';
+import { emailProvider } from '../adapters/email/index.js';
+import { generateResetToken, verifyResetToken } from '../lib/resetToken.js';
 
 export type PublicUser = {
   id: string; role: string; fullName: string; email: string | null;
@@ -265,4 +268,76 @@ export async function logoutAll(userId: string) {
   await db.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
   await db.update(users).set({ tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date() })
     .where(eq(users.id, userId));
+}
+
+/* ----------------------------------------------------------- password reset */
+
+const RESET_RESEND_COOLDOWN_MS = 60_000;
+
+/**
+ * Step 1: email a one-time reset link. The answer is always the same ("sent") whether or not
+ * the email has an account, so this cannot be used to find out who is registered. Only a
+ * hash of the token is stored; the link itself is only ever in the email.
+ */
+export async function requestPasswordReset(rawEmail: string) {
+  // A setup problem (same for everyone) is safe to report; it says nothing about any account.
+  if (!emailProvider.isConfigured()) {
+    throw new AppError(503, 'EMAIL_NOT_CONFIGURED', 'Password reset by email is not available right now.');
+  }
+  const email = normalizeEmail(rawEmail);
+  const [user] = await db.select().from(users).where(byEmail(email)).limit(1);
+  if (!user || user.status === 'SUSPENDED') return { sent: true };
+
+  // One email per minute per account: stops someone flooding a person's inbox.
+  const ttlMs = env.PASSWORD_RESET_TOKEN_TTL_MIN * 60_000;
+  if (user.passwordResetExpiresAt) {
+    const issuedAt = user.passwordResetExpiresAt.getTime() - ttlMs;
+    if (Date.now() - issuedAt < RESET_RESEND_COOLDOWN_MS) return { sent: true };
+  }
+
+  const { token, tokenHash } = generateResetToken();
+  await db.update(users).set({
+    passwordResetTokenHash: tokenHash,
+    passwordResetExpiresAt: new Date(Date.now() + ttlMs),
+    updatedAt: new Date(),
+  }).where(eq(users.id, user.id));
+
+  const link = `${env.APP_URL.replace(/\/+$/, '')}/reset-password?uid=${user.id}&token=${token}`;
+  try {
+    await emailProvider.send(
+      email,
+      'Reset your Doraha Eats password',
+      `Hi ${user.fullName},\n\nTap the link to choose a new password (valid for ${env.PASSWORD_RESET_TOKEN_TTL_MIN} minutes):\n${link}\n\nIf you did not ask for this, you can ignore this email.`,
+    );
+  } catch (e) {
+    // Do not reveal the failure to the caller (it would confirm the account exists).
+    console.error(JSON.stringify({ at: 'password-reset', msg: 'email send failed', err: String((e as Error)?.message ?? e) }));
+  }
+  return { sent: true };
+}
+
+/**
+ * Step 2: check the token and set the new password. The token works once, expires, and
+ * a successful reset logs the account out everywhere (old tokens stop working).
+ */
+export async function resetPassword(userId: string, token: string, newPassword: string) {
+  const invalid = () => Errors.badRequest('This reset link is invalid or has expired.', 'RESET_INVALID');
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user?.passwordResetTokenHash || !user.passwordResetExpiresAt) throw invalid();
+  if (user.passwordResetExpiresAt.getTime() < Date.now()) {
+    throw Errors.badRequest('This reset link has expired. Please request a new one.', 'RESET_EXPIRED');
+  }
+  if (!verifyResetToken(token, user.passwordResetTokenHash)) throw invalid();
+  if (user.status === 'SUSPENDED') throw Errors.accountSuspended();
+
+  const passwordHash = await hashPassword(newPassword);
+  // Consume the token atomically: of two simultaneous uses, only one can win.
+  const [done] = await db.update(users).set({
+    passwordHash, passwordResetTokenHash: null, passwordResetExpiresAt: null,
+    tokenVersion: sql`${users.tokenVersion} + 1`, updatedAt: new Date(),
+  }).where(and(eq(users.id, user.id), eq(users.passwordResetTokenHash, user.passwordResetTokenHash)))
+    .returning({ id: users.id });
+  if (!done) throw invalid();
+  await db.delete(deviceTokens).where(eq(deviceTokens.userId, user.id));
+  return { ok: true };
 }

@@ -1,3 +1,4 @@
+import { startOfTodayIST } from '../lib/time.js';
 import { audit } from '../lib/audit.js';
 import { hashPassword } from '../lib/password.js';
 import { normalizeEmail, normalizeIndianPhone } from '../lib/phone.js';
@@ -462,7 +463,7 @@ adminRouter.put('/settings', validate({
 
 adminRouter.get('/analytics', async (_req, res, next) => {
   try {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = startOfTodayIST(); // start of today in India time
     const since = new Date(Date.now() - 14 * 86_400_000);
 
     const [counts] = await db.select({

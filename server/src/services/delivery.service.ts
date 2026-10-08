@@ -1,3 +1,4 @@
+import { startOfTodayIST } from '../lib/time.js';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { deliveryAssignments, deliveryPartners, orders, users, vendors } from '../db/schema.js';
@@ -210,7 +211,7 @@ export async function listPartnerHistory(userId: string) {
 export async function getPartnerEarnings(userId: string) {
   const history = await listPartnerHistory(userId);
   const completed = history.filter((h) => h.state === 'COMPLETED');
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = startOfTodayIST(); // start of today in India time
   const todays = completed.filter((h) => h.deliveredAt && new Date(h.deliveredAt) >= today);
   return {
     totalDeliveries: completed.length,
