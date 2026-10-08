@@ -23,8 +23,10 @@ export async function registerForPush(): Promise<void> {
     if (Platform.OS === 'web' || !Device.isDevice) return;
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Orders', importance: Notifications.AndroidImportance.HIGH,
+      // The server sends every push with channelId 'orders' (adapters/push). The channel must exist
+      // with HIGH importance or Android shows the alert silently, without a pop-up or sound.
+      await Notifications.setNotificationChannelAsync('orders', {
+        name: 'Orders', importance: Notifications.AndroidImportance.HIGH, sound: 'default', vibrationPattern: [0, 250, 250, 250],
       });
     }
 
