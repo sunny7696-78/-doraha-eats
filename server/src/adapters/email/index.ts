@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import { env } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 
@@ -38,4 +39,28 @@ const resendProvider: EmailProvider = {
   },
 };
 
-export const emailProvider: EmailProvider = env.EMAIL_PROVIDER === 'resend' ? resendProvider : consoleProvider;
+/**
+ * Plain SMTP (Gmail, Zoho, Brevo, any mail server). Needs no domain of your own: with Gmail you
+ * send from your own address using an App Password. Fine for a pilot (Gmail allows roughly 500
+ * mails a day); move to a domain + Resend when you grow.
+ */
+let transport: nodemailer.Transporter | null = null;
+const smtpProvider: EmailProvider = {
+  isConfigured: () => !!env.SMTP_HOST && !!env.SMTP_USER && !!env.SMTP_PASS,
+  async send(to, subject, text) {
+    transport ??= nodemailer.createTransport({
+      host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_PORT === 465,
+      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+      connectionTimeout: 10_000, socketTimeout: 15_000,
+    });
+    try {
+      await transport.sendMail({ from: env.EMAIL_FROM || env.SMTP_USER, to, subject, text });
+    } catch (e) {
+      console.error(JSON.stringify({ at: 'email', provider: 'smtp', err: String((e as Error)?.message ?? e).slice(0, 200) }));
+      throw new AppError(502, 'EMAIL_FAILED', 'Could not send the email.');
+    }
+  },
+};
+
+export const emailProvider: EmailProvider =
+  env.EMAIL_PROVIDER === 'resend' ? resendProvider : env.EMAIL_PROVIDER === 'smtp' ? smtpProvider : consoleProvider;

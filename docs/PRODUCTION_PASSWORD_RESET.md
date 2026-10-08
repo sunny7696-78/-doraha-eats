@@ -9,6 +9,20 @@
 - One reset email per minute per account; suspended accounts get none
 - API also available for the app: `POST /api/v1/auth/password/reset` `{ userId, token, newPassword }`
 
+## Option A - no domain needed: Gmail (good for the pilot)
+- Use a Gmail account for the shop (e.g. a new `doraha.eats.support@gmail.com`), not your personal one
+- Google Account -> Security -> turn ON 2-Step Verification -> search "App passwords" -> create one (16 letters)
+- Render variables:
+  - `EMAIL_PROVIDER=smtp`
+  - `SMTP_HOST=smtp.gmail.com`
+  - `SMTP_PORT=465`
+  - `SMTP_USER=<that gmail address>`
+  - `SMTP_PASS=<the 16-letter app password, not the normal password>`
+  - `APP_URL=https://doraha-eats.onrender.com`
+- Emails arrive "from" that Gmail address. Gmail allows roughly 500 mails/day, and some may land in Spam at first
+- Later, when you have a domain, switch to Option B
+
+## Option B - own domain + Resend (better deliverability, for launch)
 ## Render environment variables to add
 - `EMAIL_PROVIDER=resend`
 - `RESEND_API_KEY=<from resend.com>`

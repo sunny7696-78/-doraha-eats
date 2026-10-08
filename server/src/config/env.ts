@@ -14,7 +14,11 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   DEMO_PASSWORD: z.string().default('Doraha@123'),
   SEED_DEMO_DATA: bool(false), // opt-in only: seed script refuses to run unless this is "true"
-  EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+  EMAIL_PROVIDER: z.enum(['console', 'resend', 'smtp']).default('console'),
+  SMTP_HOST: z.string().optional(),               // Gmail: smtp.gmail.com
+  SMTP_PORT: z.coerce.number().int().default(465), // 465 = SSL (Gmail)
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),               // Gmail: a 16-letter App Password, NOT your normal password
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),            // e.g. "Doraha Eats <no-reply@yourdomain.com>"
   /** Public https address of THIS API; password-reset links point at its /reset-password page. */
