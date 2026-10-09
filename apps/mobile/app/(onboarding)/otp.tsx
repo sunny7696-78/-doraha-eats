@@ -33,7 +33,7 @@ export default function OtpScreen() {
   }
 
   return (
-    <Screen style={{ justifyContent: 'center', padding: spacing.xl }}>
+    <Screen safeTop style={{ justifyContent: 'center', padding: spacing.xl }}>
       <AppText variant="h2">{t('verifyOtp')}</AppText>
       <AppText variant="body" color={colors.textMuted} style={{ marginBottom: spacing.lg }}>
         Enter the 6-digit code sent to {phone}

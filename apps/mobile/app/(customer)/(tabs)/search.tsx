@@ -23,7 +23,7 @@ export default function SearchScreen() {
   }
 
   return (
-    <Screen style={{ padding: spacing.lg }}>
+    <Screen safeTop style={{ padding: spacing.lg }}>
       <TextInput
         value={q} onChangeText={run} placeholder={t('search')} autoFocus
         style={styles.input}

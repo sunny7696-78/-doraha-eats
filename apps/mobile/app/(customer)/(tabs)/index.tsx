@@ -61,12 +61,12 @@ export default function HomeScreen() {
 
   async function onRefresh() { setRefreshing(true); await load(); }
 
-  if (loading) return <Screen><LoadingBlock /></Screen>;
-  if (error) return <Screen><ErrorState message={error} onRetry={load} /></Screen>;
+  if (loading) return <Screen safeTop><LoadingBlock /></Screen>;
+  if (error) return <Screen safeTop><ErrorState message={error} onRetry={load} /></Screen>;
 
   if (serviceable === false) {
     return (
-      <Screen style={{ alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+      <Screen safeTop style={{ alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
         <AppText variant="h1">📍</AppText>
         <AppText variant="h2" style={{ textAlign: 'center', marginTop: spacing.md }}>{t('outOfZone')}</AppText>
         <AppText variant="body" color={colors.textMuted} style={{ textAlign: 'center', marginTop: spacing.sm }}>
@@ -80,7 +80,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeTop>
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}

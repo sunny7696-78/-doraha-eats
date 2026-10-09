@@ -1,11 +1,18 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, type ViewStyle, type TextStyle,
 } from 'react-native';
 import { colors, radius, spacing, typography } from '../theme/tokens';
 
-export function Screen({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
-  return <View style={[{ flex: 1, backgroundColor: colors.background }, style]}>{children}</View>;
+/** `safeTop`: keep content below the phone's status bar. Use it on screens that have no native header. */
+export function Screen({ children, style, safeTop }: { children: React.ReactNode; style?: ViewStyle; safeTop?: boolean }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: safeTop ? insets.top : 0 }}>
+      <View style={[{ flex: 1 }, style]}>{children}</View>
+    </View>
+  );
 }
 
 export function AppText({

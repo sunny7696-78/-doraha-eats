@@ -17,7 +17,7 @@ export default function ProfileTab() {
   const { user, logout } = useAuthStore();
 
   return (
-    <Screen style={{ padding: spacing.lg }}>
+    <Screen safeTop style={{ padding: spacing.lg }}>
       <AppText variant="h1" style={{ marginBottom: 4 }}>{user?.fullName}</AppText>
       <AppText variant="body" color={colors.textMuted} style={{ marginBottom: spacing.lg }}>{user?.phone ?? user?.email}</AppText>
 

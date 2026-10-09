@@ -19,10 +19,10 @@ export default function OrdersTab() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  if (loading) return <Screen><LoadingBlock /></Screen>;
+  if (loading) return <Screen safeTop><LoadingBlock /></Screen>;
 
   return (
-    <Screen style={{ padding: spacing.lg }}>
+    <Screen safeTop style={{ padding: spacing.lg }}>
       <AppText variant="h1" style={{ marginBottom: spacing.md }}>Your orders</AppText>
       <FlatList
         data={orders}

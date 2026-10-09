@@ -66,10 +66,10 @@ export default function RiderDashboard() {
     } finally { setBusy(null); }
   }
 
-  if (loading) return <Screen><LoadingBlock /></Screen>;
+  if (loading) return <Screen safeTop><LoadingBlock /></Screen>;
 
   return (
-    <Screen>
+    <Screen safeTop>
       <ScrollView contentContainerStyle={{ padding: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <AppText variant="h1">Deliveries</AppText>
