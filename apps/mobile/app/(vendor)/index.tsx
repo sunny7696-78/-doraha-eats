@@ -38,10 +38,10 @@ export default function VendorDashboard() {
   }
 
   const pushStatus = usePushStatus((s) => s.status);
-  if (loading) return <Screen><LoadingBlock /></Screen>;
+  if (loading) return <Screen safeTop><LoadingBlock /></Screen>;
 
   return (
-    <Screen>
+    <Screen safeTop>
       <ScrollView contentContainerStyle={{ padding: spacing.lg }} refreshControl={<RefreshControl refreshing={false} onRefresh={load} />}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
@@ -76,7 +76,7 @@ export default function VendorDashboard() {
             <Pressable key={o.id} onPress={() => router.push(`/(vendor)/order/${o.id}`)} style={styles.orderCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <AppText variant="bodyBold">{o.code}</AppText>
-                <Badge label={o.statusLabel} tone={o.status === 'PLACED' ? 'yellow' : 'blue'} />
+                <Badge label={o.statusLabel ?? o.status} tone={o.status === 'PLACED' ? 'yellow' : 'blue'} />
               </View>
               <AppText variant="caption" color={colors.textMuted}>{o.items.length} item(s) · {formatPaise(o.totalPaise)}</AppText>
             </Pressable>

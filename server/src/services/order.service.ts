@@ -221,7 +221,7 @@ export async function listVendorOrders(vendorId: string, status?: OrderStatus) {
     eq(orders.paymentMethod, 'COD'),
     inArray(orders.paymentStatus, ['PAID', 'REFUNDED']),
   );
-  return db.query.orders.findMany({
+  const rows = await db.query.orders.findMany({
     where: status
       ? and(eq(orders.vendorId, vendorId), eq(orders.status, status), visible)
       : and(eq(orders.vendorId, vendorId), visible),
@@ -232,6 +232,8 @@ export async function listVendorOrders(vendorId: string, status?: OrderStatus) {
     orderBy: [desc(orders.placedAt)],
     limit: 100,
   });
+  // The vendor app shows this as the status badge on every row.
+  return rows.map((o) => ({ ...o, statusLabel: STATUS_LABEL[o.status as OrderStatus] }));
 }
 
 /**

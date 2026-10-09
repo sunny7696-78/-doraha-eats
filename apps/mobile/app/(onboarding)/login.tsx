@@ -41,7 +41,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeTop>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'center', padding: spacing.xl }}>
         <AppText variant="h1" color={colors.primary}>Doraha Eats</AppText>
         <AppText variant="body" color={colors.textMuted} style={{ marginBottom: spacing.xl }}>Doraha da apna food delivery.</AppText>
