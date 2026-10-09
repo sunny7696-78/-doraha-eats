@@ -11,6 +11,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { api } from '../../lib/api';
+import { usePushStatus } from './status';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -19,8 +20,10 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerForPush(): Promise<void> {
+  const report = usePushStatus.getState().set;
   try {
-    if (Platform.OS === 'web' || !Device.isDevice) return;
+    if (Platform.OS === 'web') return report('not available on web');
+    if (!Device.isDevice) return report('not available on an emulator');
 
     if (Platform.OS === 'android') {
       // The server sends every push with channelId 'orders' (adapters/push). The channel must exist
@@ -32,16 +35,18 @@ export async function registerForPush(): Promise<void> {
 
     let { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
-    if (status !== 'granted') return;
+    if (status !== 'granted') return report('OFF - notifications are blocked. Turn them on in phone Settings > Apps > Doraha Eats > Notifications');
 
     const projectId = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
-    if (!projectId) return;
+    if (!projectId) return report('OFF - app build has no project id');
 
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
     await api('/auth/device-token', {
       method: 'POST', body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' },
     });
-  } catch {
-    // No Firebase credentials in this build, offline, etc. Polling still works.
+    report('ON');
+  } catch (e) {
+    // Never break the app (polling still works) - but say WHY, so it can be fixed.
+    report(`OFF - ${(e as Error)?.message?.slice(0, 140) || 'unknown error'}`);
   }
 }
