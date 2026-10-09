@@ -6,6 +6,7 @@ import { colors, spacing } from '../../src/theme/tokens';
 import { getMyVendor, listVendorOrders, setVendorOpen, type VendorProfile } from '../../src/features/vendor/api';
 import type { OrderDetail } from '../../src/features/orders/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { usePushStatus } from '../../src/features/push/status';
 import { formatPaise } from '../../src/lib/money';
 
 const ACTIVE_STATUSES = ['PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'ASSIGNED', 'PICKED_UP', 'ON_THE_WAY'];
@@ -36,6 +37,7 @@ export default function VendorDashboard() {
     setVendor(v);
   }
 
+  const pushStatus = usePushStatus((s) => s.status);
   if (loading) return <Screen safeTop><LoadingBlock /></Screen>;
 
   return (
@@ -48,6 +50,10 @@ export default function VendorDashboard() {
           </View>
           <Pressable onPress={logout} hitSlop={16} style={{ padding: 8 }}><AppText variant="caption" color={colors.danger}>Log out</AppText></Pressable>
         </View>
+
+        <AppText variant="caption" color={pushStatus === 'ON' ? colors.success : colors.danger} style={{ marginTop: spacing.sm }}>
+          New-order alerts: {pushStatus}
+        </AppText>
 
         <Card style={{ marginTop: spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
